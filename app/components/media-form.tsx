@@ -67,12 +67,28 @@ export function MediaForm() {
       try {
         // --- SERVER ANALYSIS ---
         const response = await fetch(
-          `/resource/analyze?url=${encodeURIComponent(url)}&format=all`,
+          `/resource/analyze?url=${encodeURIComponent(url)}&format=json,text`,
         );
-        const data = (await response.json()) as {
-          results?: Record<string, string>;
-          error?: string;
-        };
+
+        const contentType = response.headers.get('content-type');
+        let data: { results?: Record<string, string>; error?: string } = {};
+
+        if (contentType && contentType.includes('application/json')) {
+          data = (await response.json()) as {
+            results?: Record<string, string>;
+            error?: string;
+          };
+        } else {
+          // If response is not JSON (e.g., 503 HTML page), read as text to debug or just throw
+          const text = await response.text();
+          if (!response.ok) {
+            throw new Error(
+              `Server Error (${response.status}): The analysis worker may have crashed or timed out.`,
+            );
+          }
+          console.error('Unexpected non-JSON response:', text);
+          throw new Error('Received invalid response from server.');
+        }
 
         if (!response.ok || data.error) {
           throw new Error(
@@ -185,7 +201,6 @@ export function MediaForm() {
           )}
         </div>
       </div>
-
       {/* Loading Skeleton */}
       {isPending && <MediaSkeleton />}
 
@@ -193,7 +208,7 @@ export function MediaForm() {
       {state.results && !isPending && (
         <div className="w-full max-w-5xl px-0 sm:px-12">
           <div className="animate-in fade-in slide-in-from-bottom-4 mt-8 duration-500">
-            <MediaView data={state.results} />{' '}
+            <MediaView data={state.results} url={state.url || ''} />{' '}
             {/* Default uses JSON for formatted view */}
           </div>
         </div>

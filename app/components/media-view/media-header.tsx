@@ -8,6 +8,17 @@ import type { MediaTrackJSON } from '~/types/media';
 
 import { MediaIcon } from './media-icon';
 
+interface MediaHeaderProps {
+  generalTrack?: MediaTrackJSON;
+  videoTracks: MediaTrackJSON[];
+  audioTracks: MediaTrackJSON[];
+  textTracks: MediaTrackJSON[];
+  isTextView: boolean;
+  setIsTextView: (val: boolean) => void;
+  rawData: Record<string, string>;
+  url: string;
+}
+
 export function MediaHeader({
   generalTrack,
   videoTracks,
@@ -16,18 +27,13 @@ export function MediaHeader({
   isTextView,
   setIsTextView,
   rawData,
-}: {
-  generalTrack?: MediaTrackJSON;
-  videoTracks: MediaTrackJSON[];
-  audioTracks: MediaTrackJSON[];
-  textTracks: MediaTrackJSON[];
-  isTextView: boolean;
-  setIsTextView: (val: boolean) => void;
-  rawData: Record<string, string>;
-}) {
+  url,
+}: MediaHeaderProps) {
   if (!generalTrack) return null;
 
   const headerIcons: string[] = [];
+  // Use a loose type for accessing non-standard fields like "FileSize/String"
+  const trackAny = generalTrack as unknown as Record<string, string>;
 
   // 1. Resolution
   if (videoTracks.length > 0) {
@@ -98,8 +104,11 @@ export function MediaHeader({
   const displayFilename =
     filenameRaw.split('/').pop()?.split('\\').pop() || filenameRaw;
 
-  const runtime = formatDuration(generalTrack['Duration']);
-  const fileSize = formatSize(generalTrack['FileSize']);
+  // Access fields via trackAny to avoid TS errors
+  const fileSize =
+    trackAny['FileSize/String'] || formatSize(generalTrack['FileSize']);
+  const duration =
+    trackAny['Duration/String'] || formatDuration(generalTrack['Duration']);
 
   return (
     <div className="bg-background/95 supports-backdrop-filter:bg-background/60 sticky top-0 z-50 -mx-4 flex flex-col gap-4 px-4 pt-4 pb-0 backdrop-blur-md transition-all md:-mx-8 md:px-8">
@@ -108,7 +117,7 @@ export function MediaHeader({
           {displayFilename}
         </h1>
         <div className="text-muted-foreground flex w-full flex-wrap items-center gap-4 text-sm">
-          {runtime && <span>{runtime}</span>}
+          {duration && <span>{duration}</span>}
           {fileSize && (
             <>
               <span className="opacity-30">|</span>
@@ -141,8 +150,8 @@ export function MediaHeader({
                 View as Text
               </Label>
             </div>
-            <CopyMenu data={rawData} />
-            <ShareMenu data={rawData} />
+            <CopyMenu data={rawData} url={url} />
+            <ShareMenu data={rawData} url={url} />
           </div>
         </div>
       </div>

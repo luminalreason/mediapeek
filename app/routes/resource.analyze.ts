@@ -138,92 +138,103 @@ export async function loader({ request }: Route.LoaderArgs) {
       return fileBuffer.subarray(offset, end);
     };
 
-    const formatsToGenerate = [
+    const requestedFormats =
+      urlParams.get('format')?.toLowerCase().split(',') || [];
+    const shouldGenerateAll =
+      requestedFormats.includes('all') || requestedFormats.length === 0;
+
+    const allFormats = [
       { type: 'JSON', key: 'json' },
       { type: 'text', key: 'text' },
       { type: 'XML', key: 'xml' },
       { type: 'HTML', key: 'html' },
     ];
 
+    const formatsToGenerate = allFormats.filter(
+      (f) =>
+        shouldGenerateAll ||
+        requestedFormats.includes(f.key) ||
+        requestedFormats.includes(f.type.toLowerCase()),
+    );
+
     const results: Record<string, string> = {};
 
-    await Promise.all(
-      formatsToGenerate.map(async ({ type, key }) => {
-        try {
-          const infoInstance = await MediaInfoFactory({
-            format: type,
-            coverData: false,
-            full: false,
-            chunkSize: 5 * 1024 * 1024,
-            wasmModule: mediaInfoWasm,
-            locateFile: () => 'ignored',
-          });
+    // Generate formats sequentially to save memory/CPU
+    for (const { type, key } of formatsToGenerate) {
+      try {
+        const infoInstance = await MediaInfoFactory({
+          format: type,
+          coverData: false,
+          full: false,
+          chunkSize: 5 * 1024 * 1024,
+          wasmModule: mediaInfoWasm,
+          locateFile: () => 'ignored',
+        });
 
-          let resultStr = (await infoInstance.analyzeData(
-            () => fileSize,
-            readChunk,
-          )) as string;
-          infoInstance.close();
+        let resultStr = (await infoInstance.analyzeData(
+          () => fileSize,
+          readChunk,
+        )) as string;
+        infoInstance.close();
 
-          // Post-processing
-          if (type === 'JSON') {
-            try {
-              const json = JSON.parse(resultStr);
-              if (json && json.media && json.media.track) {
-                const generalTrack = json.media.track.find(
-                  (t: Record<string, unknown>) => t['@type'] === 'General',
-                );
-                if (generalTrack) {
-                  if (
-                    !generalTrack['CompleteName'] &&
-                    !generalTrack['Complete_name'] &&
-                    !generalTrack['File_Name']
-                  ) {
-                    generalTrack['CompleteName'] = filename;
-                  }
-                }
-              }
-              // Pretty print JSON
-              results[key] = JSON.stringify(json, null, 2);
-            } catch (e) {
-              console.warn('Failed to parse/inject JSON result:', e);
-              results[key] = resultStr; // Fallback
-            }
-          } else if (type === 'text') {
-            if (!resultStr.includes('Complete name')) {
-              // Injection logic for text
-              const lines = resultStr.split('\n');
-              const generalIndex = lines.findIndex((l) =>
-                l.trim().startsWith('General'),
+        // Post-processing
+        if (type === 'JSON') {
+          try {
+            const json = JSON.parse(resultStr);
+            if (json && json.media && json.media.track) {
+              const generalTrack = json.media.track.find(
+                (t: Record<string, unknown>) => t['@type'] === 'General',
               );
-              if (generalIndex !== -1) {
-                let insertIndex = generalIndex + 1;
-                for (let i = generalIndex + 1; i < lines.length; i++) {
-                  if (lines[i].trim().startsWith('Unique ID')) {
-                    insertIndex = i + 1;
-                    break;
-                  }
-                  if (lines[i].trim() === '') break;
+              if (generalTrack) {
+                if (
+                  !generalTrack['CompleteName'] &&
+                  !generalTrack['Complete_name'] &&
+                  !generalTrack['File_Name']
+                ) {
+                  generalTrack['CompleteName'] = filename;
                 }
-                const padding = ' '.repeat(41 - 'Complete name'.length);
-                lines.splice(
-                  insertIndex,
-                  0,
-                  `Complete name${padding}: ${filename}`,
-                );
-                resultStr = lines.join('\n');
               }
             }
-            results[key] = resultStr;
-          } else {
-            results[key] = resultStr;
+            // Pretty print JSON
+            results[key] = JSON.stringify(json, null, 2);
+          } catch (e) {
+            console.warn('Failed to parse/inject JSON result:', e);
+            results[key] = resultStr; // Fallback
           }
-        } catch (err) {
-          console.error(`Failed to generate ${type}:`, err);
-          results[key] = `Error generating ${type} view.`;
+        } else if (type === 'text') {
+          if (!resultStr.includes('Complete name')) {
+            // Injection logic for text
+            const lines = resultStr.split('\n');
+            const generalIndex = lines.findIndex((l) =>
+              l.trim().startsWith('General'),
+            );
+            if (generalIndex !== -1) {
+              let insertIndex = generalIndex + 1;
+              for (let i = generalIndex + 1; i < lines.length; i++) {
+                if (lines[i].trim().startsWith('Unique ID')) {
+                  insertIndex = i + 1;
+                  break;
+                }
+                if (lines[i].trim() === '') break;
+              }
+              const padding = ' '.repeat(41 - 'Complete name'.length);
+              lines.splice(
+                insertIndex,
+                0,
+                `Complete name${padding}: ${filename}`,
+              );
+              resultStr = lines.join('\n');
+            }
+          }
+          results[key] = resultStr;
+        } else {
+          results[key] = resultStr;
         }
-      }),
-    );
+      } catch (err) {
+        console.error(`Failed to generate ${type}:`, err);
+        results[key] = `Error generating ${type} view.`;
+      }
+    }
 
     return Response.json({ results });
   } catch (error) {

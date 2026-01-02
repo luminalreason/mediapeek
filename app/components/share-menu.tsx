@@ -1,5 +1,5 @@
 import { ChevronDown, ExternalLink, Share } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '~/components/ui/button';
@@ -14,14 +14,42 @@ import { uploadToPrivateBin } from '../lib/privatebin';
 
 interface ShareMenuProps {
   data: Record<string, string>;
+  url: string;
   className?: string;
 }
 
-export function ShareMenu({ data, className }: ShareMenuProps) {
-  const [url, setUrl] = useState<string | null>(null);
+export function ShareMenu({ data, url, className }: ShareMenuProps) {
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const fetchedData = useRef<Record<string, string>>({});
 
   const handleShare = async (format: string, label: string) => {
-    const content = data[format];
+    let content: string | undefined =
+      data[format] || fetchedData.current[format];
+
+    if (!content) {
+      // Fetch on demand
+      const toastId = toast.loading(`Generating ${label}...`);
+      try {
+        const response = await fetch(
+          `/resource/analyze?url=${encodeURIComponent(url)}&format=${format}`,
+        );
+        if (!response.ok) throw new Error('Failed to generate format');
+        const json = (await response.json()) as {
+          results?: Record<string, string>;
+        };
+        // The API returns { results: { [format]: content } }
+        content = json.results?.[format];
+        if (!content) throw new Error('No content returned');
+
+        fetchedData.current[format] = content as string;
+        toast.dismiss(toastId);
+      } catch (err) {
+        console.error(err);
+        toast.error(`Failed to generate ${label}`, { id: toastId });
+        return;
+      }
+    }
+
     if (!content) {
       toast.error(`No ${label} data found.`);
       return;
@@ -33,7 +61,7 @@ export function ShareMenu({ data, className }: ShareMenuProps) {
       const { url: newUrl } = await uploadToPrivateBin(content);
 
       await navigator.clipboard.writeText(newUrl);
-      setUrl(newUrl);
+      setShareUrl(newUrl);
 
       toast.success('Link Copied', {
         id: toastId,
@@ -49,13 +77,13 @@ export function ShareMenu({ data, className }: ShareMenuProps) {
     }
   };
 
-  if (url) {
+  if (shareUrl) {
     return (
       <Button
         variant="secondary"
         size="sm"
         className={className}
-        onClick={() => window.open(url, '_blank')}
+        onClick={() => window.open(shareUrl, '_blank')}
       >
         <ExternalLink className="mr-2 h-4 w-4" />
         Open in PrivateBin

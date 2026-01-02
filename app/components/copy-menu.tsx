@@ -1,4 +1,5 @@
 import { ChevronDown, Copy } from 'lucide-react';
+import { useRef } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '~/components/ui/button';
@@ -11,12 +12,42 @@ import {
 
 interface CopyMenuProps {
   data: Record<string, string>;
+  url: string;
   className?: string;
 }
 
-export function CopyMenu({ data, className }: CopyMenuProps) {
+export function CopyMenu({ data, url, className }: CopyMenuProps) {
+  // Local cache for fetched formats
+  const fetchedData = useRef<Record<string, string>>({});
+
   const handleCopy = async (format: string, label: string) => {
-    const content = data[format];
+    let content: string | undefined =
+      data[format] || fetchedData.current[format];
+
+    if (!content) {
+      // Fetch on demand
+      const toastId = toast.loading(`Generating ${label}...`);
+      try {
+        const response = await fetch(
+          `/resource/analyze?url=${encodeURIComponent(url)}&format=${format}`,
+        );
+        if (!response.ok) throw new Error('Failed to generate format');
+        const json = (await response.json()) as {
+          results?: Record<string, string>;
+        };
+        // The API returns { results: { [format]: content } }
+        content = json.results?.[format];
+        if (!content) throw new Error('No content returned');
+
+        fetchedData.current[format] = content as string;
+        toast.dismiss(toastId);
+      } catch (err) {
+        console.error(err);
+        toast.error(`Failed to generate ${label}`, { id: toastId });
+        return;
+      }
+    }
+
     if (!content) {
       toast.error(`No ${label} data found.`);
       return;

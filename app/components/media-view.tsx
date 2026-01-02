@@ -13,9 +13,10 @@ import { VideoSection } from './media-view/video-section';
 
 interface MediaViewProps {
   data: Record<string, string>;
+  url: string;
 }
 
-export function MediaView({ data }: MediaViewProps) {
+export function MediaView({ data, url }: MediaViewProps) {
   const [isTextView, setIsTextView] = useState(false);
 
   const parsedData = useMemo(() => {
@@ -52,6 +53,7 @@ export function MediaView({ data }: MediaViewProps) {
   return (
     <div className="animate-in fade-in mx-auto w-full max-w-5xl space-y-6 pb-20">
       <MediaHeader
+        url={url}
         generalTrack={General}
         videoTracks={VideoTracks}
         audioTracks={AudioTracks}
