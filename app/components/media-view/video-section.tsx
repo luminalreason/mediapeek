@@ -1,19 +1,6 @@
 import { formatBitrate, mapDolbyProfile } from '~/lib/formatters';
+import { calculateBitsPerPixel, getBitrate } from '~/lib/media-utils';
 import type { MediaTrackJSON } from '~/types/media';
-
-const getBitrate = (
-  videoTrack: MediaTrackJSON,
-  generalTrack?: MediaTrackJSON,
-) => {
-  if (videoTrack['BitRate']) return videoTrack['BitRate'];
-  if (videoTrack['BitRate_Measured']) return videoTrack['BitRate_Measured'];
-  if (videoTrack['BitRate_Maximum']) return videoTrack['BitRate_Maximum'];
-  if (videoTrack['BitRate_Nominal']) return videoTrack['BitRate_Nominal'];
-  // Fallback to OverallBitRate from General if available
-  if (generalTrack && generalTrack['OverallBitRate'])
-    return generalTrack['OverallBitRate'];
-  return null;
-};
 
 export function VideoSection({
   videoTracks,
@@ -124,13 +111,8 @@ export function VideoSection({
               )}
               {/* Bits/(Pixel*Frame) Calculation */}
               {(() => {
-                const w = parseInt(video['Width'] || '0', 10);
-                const h = parseInt(video['Height'] || '0', 10);
-                const fps = parseFloat(video['FrameRate'] || '0');
-                const br = parseInt(getBitrate(video, generalTrack) || '0', 10);
-
-                if (w > 0 && h > 0 && fps > 0 && br > 0) {
-                  const bpf = (br / (w * h * fps)).toFixed(3);
+                const bpf = calculateBitsPerPixel(video, generalTrack);
+                if (bpf) {
                   return (
                     <div>
                       <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">

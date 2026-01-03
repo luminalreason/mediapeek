@@ -1,37 +1,22 @@
+import { getAccessibilityFeatures } from '~/lib/media-utils';
 import type { MediaTrackJSON } from '~/types/media';
 
 import { MediaIcon } from './media-icon';
 
 export function AccessibilitySection({
+  generalTrack,
   audioTracks,
   textTracks,
 }: {
+  generalTrack: MediaTrackJSON | undefined;
   audioTracks: MediaTrackJSON[];
   textTracks: MediaTrackJSON[];
 }) {
-  // Subtitle Tech (SDH & CC)
-  const hasSDH = textTracks.some((t) => (t['Title'] || '').includes('SDH'));
-  const hasCC = textTracks.some((t) => {
-    const title = (t['Title'] || '').toLowerCase();
-    const format = (t['Format'] || '').toLowerCase();
-    return (
-      title.includes('cc') ||
-      title.includes('closed captions') ||
-      format.includes('closed captions')
-    );
-  });
-
-  // Audio Description (AD)
-  const hasAD = audioTracks.some((a) => {
-    const title = (a['Title'] || '').toLowerCase();
-    const serviceKind = (a['ServiceKind'] || '').toLowerCase();
-    return (
-      title.includes('ad') ||
-      title.includes('audio description') ||
-      serviceKind.includes('audio description') ||
-      serviceKind.includes('visually impaired')
-    );
-  });
+  const { hasSDH, hasCC, hasAD } = getAccessibilityFeatures(
+    audioTracks,
+    textTracks,
+    generalTrack,
+  );
 
   if (!hasSDH && !hasCC && !hasAD) return null;
 

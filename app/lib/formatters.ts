@@ -72,3 +72,11 @@ export const formatChannels = (channelsStr?: string) => {
 
   return `${c} Channels`;
 };
+
+export const formatSamplingRate = (rateStr?: string | number) => {
+  if (!rateStr) return '';
+  const rate = typeof rateStr === 'string' ? parseFloat(rateStr) : rateStr;
+  if (isNaN(rate)) return rateStr.toString();
+
+  return `${(rate / 1000).toFixed(1)} kHz`;
+};

@@ -7,6 +7,7 @@ export interface MediaTrackJSON {
   Forced?: string;
   Format?: string;
   Format_Info?: string;
+  'Format/Info'?: string;
   ID?: string;
 
   // General

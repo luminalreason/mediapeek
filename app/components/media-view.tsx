@@ -71,7 +71,7 @@ export function MediaView({ data, url }: MediaViewProps) {
                 TEXT Output
               </span>
             </div>
-            <pre className="max-w-[calc(100vw-3rem)] overflow-x-auto p-4 font-mono text-base leading-relaxed whitespace-pre sm:max-w-none sm:whitespace-pre-wrap">
+            <pre className="max-w-[calc(100vw-3rem)] overflow-x-auto p-4 font-mono text-xs leading-relaxed whitespace-pre sm:max-w-none sm:text-base sm:whitespace-pre-wrap">
               {data.text || 'No text data available.'}
             </pre>
           </div>
@@ -91,6 +91,7 @@ export function MediaView({ data, url }: MediaViewProps) {
           <SubtitleSection textTracks={TextTracks} />
           <ChapterSection menuTrack={MenuTrack} />
           <AccessibilitySection
+            generalTrack={General}
             audioTracks={AudioTracks}
             textTracks={TextTracks}
           />

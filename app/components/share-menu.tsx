@@ -95,8 +95,8 @@ export function ShareMenu({ data, url, className }: ShareMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" size="sm" className={className}>
-          <Share className="mr-2 h-4 w-4" />
-          Share
+          <Share className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Share</span>
           <ChevronDown className="ml-2 h-3 w-3 opacity-50" />
         </Button>
       </DropdownMenuTrigger>

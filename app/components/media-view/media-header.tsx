@@ -4,6 +4,7 @@ import { Label } from '~/components/ui/label';
 import { Separator } from '~/components/ui/separator';
 import { Switch } from '~/components/ui/switch';
 import { formatDuration, formatSize } from '~/lib/formatters';
+import { getAccessibilityFeatures } from '~/lib/media-utils';
 import type { MediaTrackJSON } from '~/types/media';
 
 import { MediaIcon } from './media-icon';
@@ -43,6 +44,7 @@ export function MediaHeader({
     if (!isNaN(width)) {
       if (width >= 3840) headerIcons.push('4k');
       else if (width >= 1920) headerIcons.push('hd');
+      else if (width <= 1280) headerIcons.push('sd');
     }
 
     // HDR / Dolby Vision
@@ -95,8 +97,13 @@ export function MediaHeader({
   if (hasDTS) headerIcons.push('dts');
 
   // 3. Subtitle Tech (SDH & CC)
-  const hasSDH = textTracks.some((t) => (t['Title'] || '').includes('SDH'));
+  const { hasSDH, hasCC } = getAccessibilityFeatures(
+    audioTracks,
+    textTracks,
+    generalTrack,
+  );
   if (hasSDH) headerIcons.push('sdh');
+  if (hasCC) headerIcons.push('cc');
 
   const filenameRaw =
     generalTrack['CompleteName'] || generalTrack['File_Name'] || 'Unknown';
@@ -127,7 +134,7 @@ export function MediaHeader({
 
           {/* Header Icons Inline */}
           {headerIcons.length > 0 && (
-            <div className="border-border flex items-center gap-3 border-l pl-4">
+            <div className="border-border flex items-center gap-3 sm:border-l sm:pl-4">
               {headerIcons.map((icon) => (
                 <MediaIcon
                   key={icon}
@@ -139,7 +146,7 @@ export function MediaHeader({
           )}
 
           {/* Copy & Share Menus - Right of Badges */}
-          <div className="mt-4 flex w-full shrink-0 items-center justify-start gap-4 sm:mt-0 sm:ml-auto sm:w-auto sm:justify-end">
+          <div className="mt-2 flex w-full shrink-0 flex-wrap items-center justify-start gap-4 sm:mt-0 sm:ml-auto sm:w-auto sm:justify-end">
             <div className="flex items-center space-x-2">
               <Switch
                 id="text-mode"

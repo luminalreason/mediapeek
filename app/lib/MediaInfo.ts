@@ -170,6 +170,24 @@ class MediaInfo {
   }
 
   /**
+   * Set a MediaInfo option.
+   *
+   * @param option The option name.
+   * @param value The option value.
+   * @returns The result of setting the option.
+   * @group General Use
+   */
+  setOption(option: string, value: string): string {
+    // Check if the method exists on the instance (it should, but safety first)
+    if (typeof this.mediainfoModuleInstance.Option === 'function') {
+      return this.mediainfoModuleInstance.Option(option, value);
+    }
+    // Fallback or explicit check if casing differs in some builds, though 'Option' is standard
+    // Some emscripten builds might strictly export it.
+    return '';
+  }
+
+  /**
    * Close the MediaInfoLib WASM instance.
    *
    * @group General Use

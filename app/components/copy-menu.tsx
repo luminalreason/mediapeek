@@ -71,8 +71,8 @@ export function CopyMenu({ data, url, className }: CopyMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" size="sm" className={className}>
-          <Copy className="mr-2 h-4 w-4" />
-          Copy
+          <Copy className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Copy</span>
           <ChevronDown className="ml-2 h-3 w-3 opacity-50" />
         </Button>
       </DropdownMenuTrigger>

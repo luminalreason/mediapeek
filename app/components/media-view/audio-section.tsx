@@ -2,6 +2,7 @@ import { Badge } from '~/components/ui/badge';
 import {
   formatBitrate,
   formatChannels,
+  formatSamplingRate,
   getLanguageName,
 } from '~/lib/formatters';
 import type { MediaTrackJSON } from '~/types/media';
@@ -29,29 +30,58 @@ export function AudioSection({
           const channels = formatChannels(channelsStr);
           const bitrate = audio['BitRate'];
           const bitrateMode = audio['BitRate_Mode'];
+          const samplingRateRaw = (audio as unknown as Record<string, string>)[
+            'SamplingRate'
+          ];
+          const samplingRate = formatSamplingRate(samplingRateRaw);
 
           const delayRaw = audio['Delay'];
           const delay = parseFloat(delayRaw || '0');
+
+          const renderBadges = () => (
+            <>
+              {audio['Default'] === 'Yes' && (
+                <Badge className="border border-emerald-500/20 bg-emerald-500/15 text-[10px] text-emerald-700 hover:bg-emerald-500/25 dark:bg-emerald-500/20 dark:text-emerald-400">
+                  Default
+                </Badge>
+              )}
+              {audio['Forced'] === 'Yes' && (
+                <Badge className="border border-amber-500/20 bg-amber-500/15 text-[10px] text-amber-700 hover:bg-amber-500/25 dark:bg-amber-500/20 dark:text-amber-400">
+                  Forced
+                </Badge>
+              )}
+            </>
+          );
 
           return (
             <div
               key={idx}
               className="bg-muted/20 border-muted/30 hover:bg-muted/30 flex flex-col justify-between rounded-lg border p-4 transition-colors sm:flex-row sm:items-center"
             >
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-foreground/85 text-base font-semibold">
-                    {langName}
-                  </span>
-                  {langCode && langCode !== langName && (
-                    <span className="text-muted-foreground text-xs uppercase">
-                      ({langCode})
+              <div className="flex flex-1 flex-col gap-1">
+                <div className="flex w-full items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-foreground/85 text-base font-semibold">
+                      {langName}
                     </span>
-                  )}
+                    {langCode && langCode !== langName && (
+                      <span className="text-muted-foreground text-xs uppercase">
+                        ({langCode})
+                      </span>
+                    )}
+                  </div>
+                  {/* Mobile Badges - Inline Right */}
+                  <div className="flex gap-2 sm:hidden">{renderBadges()}</div>
                 </div>
                 <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-foreground/85">
                     {format} {commercial ? `(${commercial})` : ''}
+                    {format === 'AAC' && (
+                      <span className="text-muted-foreground ml-1 text-[10px] font-normal">
+                        {audio['Format/Info'] ||
+                          'Advanced Audio Codec Low Complexity with Spectral Band Replication'}
+                      </span>
+                    )}
                   </span>
                   <span>•</span>
                   <span className="text-foreground/85">{channels}</span>
@@ -69,6 +99,12 @@ export function AudioSection({
                       </span>
                     </>
                   )}
+                  {samplingRate && (
+                    <>
+                      <span>•</span>
+                      <span className="text-foreground/85">{samplingRate}</span>
+                    </>
+                  )}
                   {delay !== 0 && (
                     <>
                       <span>•</span>
@@ -79,17 +115,10 @@ export function AudioSection({
                   )}
                 </div>
               </div>
-              <div className="mt-3 flex gap-2 sm:mt-0">
-                {audio['Default'] === 'Yes' && (
-                  <Badge className="border border-emerald-500/20 bg-emerald-500/15 text-[10px] text-emerald-700 hover:bg-emerald-500/25 dark:bg-emerald-500/20 dark:text-emerald-400">
-                    Default
-                  </Badge>
-                )}
-                {audio['Forced'] === 'Yes' && (
-                  <Badge className="border border-amber-500/20 bg-amber-500/15 text-[10px] text-amber-700 hover:bg-amber-500/25 dark:bg-amber-500/20 dark:text-amber-400">
-                    Forced
-                  </Badge>
-                )}
+
+              {/* Desktop Badges - Separate Column */}
+              <div className="hidden flex-col items-end gap-2 sm:mt-0 sm:flex">
+                <div className="flex gap-2">{renderBadges()}</div>
               </div>
             </div>
           );
