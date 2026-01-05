@@ -103,54 +103,12 @@ export async function fetchMediaChunk(
     );
   }
 
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('Failed to retrieve response body stream');
+  // Optimize: Use native arrayBuffer() instead of manual stream loop
+  // This moves the "work" from JS CPU time to Native I/O time, avoiding CPU limits.
+  const arrayBuffer = await response.arrayBuffer();
+  const fileBuffer = new Uint8Array(arrayBuffer);
 
-  const chunks: Uint8Array[] = [];
-  let receivedLength = 0;
-  const maxBytes = fetchEnd + 1;
-  let chunkCount = 0;
-
-  try {
-    console.log('[Analyze] Starting stream reading loop...');
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        console.log(
-          `[Analyze] Stream reading finished. Total chunks: ${chunkCount}`,
-        );
-        break;
-      }
-
-      chunkCount++;
-      chunks.push(value);
-      receivedLength += value.length;
-
-      // Log every 50 chunks or first/last chunks to debug progress
-      if (chunkCount % 50 === 0 || receivedLength >= maxBytes) {
-        console.log(
-          `[Analyze] Read chunk ${chunkCount}, Total: ${receivedLength} bytes`,
-        );
-      }
-
-      if (receivedLength >= maxBytes) {
-        console.log(
-          `[Analyze] Reached chunk limit (${receivedLength}/${maxBytes}). Cancelling stream.`,
-        );
-        await reader.cancel();
-        break;
-      }
-    }
-  } catch (err) {
-    console.warn('[Analyze] Stream reading interrupted or failed:', err);
-  }
-
-  const fileBuffer = new Uint8Array(receivedLength);
-  let position = 0;
-  for (const chunk of chunks) {
-    fileBuffer.set(chunk, position);
-    position += chunk.length;
-  }
+  console.log(`[Analyze] Loaded ${fileBuffer.byteLength} bytes into memory.`);
 
   console.log(`[Analyze] Loaded ${fileBuffer.byteLength} bytes into memory.`);
 

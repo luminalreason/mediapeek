@@ -23,6 +23,12 @@ You can use the following URLs to test the application:
 
 - https://media.w3.org/2010/05/sintel/trailer.mp4
 - https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+- https://opencontent.netflix.com/
+- https://www.peterpee.com/demo
+- https://drive.google.com/drive/folders/1JxmeedtAtgmoafXv9rroiDOS2vEX7N4b
+- https://www2.iis.fraunhofer.de/AAC/index.html
+- https://1drv.ms/f/c/999a020cf5718098/EobEBJqZ92ZFipImX5WugTUB7xX5r5ko-omYcTJQ9chLPA
+- https://ott.dolby.com/OnDelKits/AC-4/Dolby_AC-4_Online_Delivery_Kit_1.5/help_files/topics/kit_wrapper_MP4_multiplexed_streams.html
 - https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/video_demo_hevc.html
 - https://kodi.wiki/view/Samples
 

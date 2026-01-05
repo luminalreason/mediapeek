@@ -44,6 +44,7 @@ export interface MediaTrackJSON {
   Channels?: string;
   'Channel(s)'?: string;
   Format_Commercial_IfAny?: string;
+  Format_AdditionalFeatures?: string;
   BitRate_Mode?: string;
   Delay?: string;
   ServiceKind?: string;

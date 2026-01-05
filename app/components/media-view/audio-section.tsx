@@ -86,8 +86,25 @@ export function AudioSection({
                     {format} {commercial ? `(${commercial})` : ''}
                     {format === 'AAC' && (
                       <span className="text-muted-foreground ml-1 text-[10px] font-normal">
-                        {audio['Format/Info'] ||
-                          'Advanced Audio Codec Low Complexity with Spectral Band Replication'}
+                        {(() => {
+                          const features =
+                            audio['Format_AdditionalFeatures'] || '';
+                          let desc = 'Advanced Audio Codec';
+
+                          if (features.includes('LC'))
+                            desc += ' Low Complexity';
+
+                          const hasSBR = features.includes('SBR');
+                          if (hasSBR) desc += ' with Spectral Band Replication';
+
+                          if (features.includes('PS')) {
+                            desc += hasSBR
+                              ? ' and Parametric Stereo'
+                              : ' with Parametric Stereo';
+                          }
+
+                          return audio['Format/Info'] || desc;
+                        })()}
                       </span>
                     )}
                   </span>
