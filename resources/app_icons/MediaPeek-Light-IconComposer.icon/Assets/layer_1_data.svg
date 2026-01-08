@@ -1,0 +1,28 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!--
+        Layer 2: Data (V23 - Black Theme)
+        - Geometry: Same as V19 (Based on V17 Spaced).
+        - Height: 80px.
+        - Gap: 70px.
+        - Width: 700px.
+        - Color: BLACK.
+    -->
+
+    <g opacity="0.8">
+        <!-- Line 1 -->
+        <!-- Y=250. -->
+        <rect x="162" y="250" width="700" height="80" rx="40" fill="black" />
+
+        <!-- Line 2 -->
+        <!-- Y=400. -->
+        <rect x="162" y="400" width="700" height="80" rx="40" fill="black" />
+
+        <!-- Line 3 -->
+        <!-- Y=550. -->
+        <rect x="162" y="550" width="500" height="80" rx="40" fill="black" />
+
+        <!-- Line 4 -->
+        <!-- Y=700. -->
+        <rect x="162" y="700" width="640" height="80" rx="40" fill="black" />
+    </g>
+</svg>

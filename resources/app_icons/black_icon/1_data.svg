@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!--
+        Layer 2: Data (V17 - Spaced)
+        - Height: 80px (Same as V16).
+        - Gap: Increased to 70px (was 40px).
+        - Total Content Height: 4*80 + 3*70 = 530px.
+        - Start Y: ~250.
+    -->
+
+    <g opacity="0.6">
+        <!-- Line 1 -->
+        <!-- Y=250. W=700. -->
+        <rect x="162" y="250" width="700" height="80" rx="40" fill="white" />
+
+        <!-- Line 2 -->
+        <!-- Y = 250 + 80 + 70 = 400. -->
+        <rect x="162" y="400" width="700" height="80" rx="40" fill="white" />
+
+        <!-- Line 3 -->
+        <!-- Y = 400 + 80 + 70 = 550. -->
+        <rect x="162" y="550" width="500" height="80" rx="40" fill="white" />
+
+        <!-- Line 4 -->
+        <!-- Y = 550 + 80 + 70 = 700. -->
+        <rect x="162" y="700" width="640" height="80" rx="40" fill="white" />
+    </g>
+</svg>

@@ -1,0 +1,36 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!--Layer 3: Lens (V19 - Simple Alignment)
+        - Strategy: "Centered Zoom".
+        - The magnified lines share the EXACT same vertical center as the background lines.
+        - This prevents any "jump" or misalignment.-->
+  <defs>
+    <linearGradient id="lensGradientV19" x1="200" y1="200" x2="800" y2="800" gradientUnits="userSpaceOnUse">
+      <stop stop-color="white" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="white" stop-opacity="0.1"/>
+    </linearGradient>
+    <filter id="shadowV19" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="20" stdDeviation="25" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadowV19)">
+<!--Lens Circle-->
+    <circle cx="680" cy="540" r="270" fill="url(#lensGradientV19)" stroke="white" stroke-width="20" stroke-opacity="0.8"/>
+    <clipPath id="lensClipV19">
+      <circle cx="680" cy="540" r="270"/>
+    </clipPath>
+    <g clip-path="url(#lensClipV19)">
+<!--Zoomed Lines (Centered).
+                Outside Height = 80. Inside Height = 100 (Increased for zoom feel).
+
+                Line 2: Base Y=400. Center=440.
+                Zoom Center=440. H=100. New Y = 440-50 = 390.-->
+      <rect x="200" y="390" width="800" height="100" rx="50" fill="white" opacity="1.0"/>
+<!--Line 3: Base Y=550. Center=590.
+                Zoom Center=590. H=100. New Y = 590-50 = 540.-->
+      <rect x="200" y="540" width="600" height="100" rx="50" fill="white" opacity="1.0"/>
+<!--Line 4: Base Y=700. Center=740.
+                Zoom Center=740. H=100. New Y = 740-50 = 690.-->
+      <rect x="200" y="690" width="750" height="100" rx="50" fill="white" opacity="1.0"/>
+    </g>
+  </g>
+</svg>

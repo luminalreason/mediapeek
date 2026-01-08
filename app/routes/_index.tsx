@@ -37,25 +37,8 @@ export default function Index() {
       <footer className="bg-muted/50 border-t backdrop-blur-md">
         <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8">
           <p className="text-muted-foreground text-center text-sm font-medium">
-            Hosted on{' '}
-            <a
-              href="https://workers.cloudflare.com/"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-foreground underline underline-offset-4 transition-colors"
-            >
-              Cloudflare Workers
-            </a>{' '}
-            • Powered by{' '}
-            <a
-              href="https://mediainfo.js.org/"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-foreground underline underline-offset-4 transition-colors"
-            >
-              MediaInfo WebAssembly
-            </a>{' '}
-            • Build: {__BUILD_NUMBER__}
+            Copyright &copy; {new Date().getFullYear()} MediaPeek. All rights
+            reserved.
           </p>
         </div>
       </footer>

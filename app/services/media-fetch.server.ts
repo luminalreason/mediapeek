@@ -12,7 +12,7 @@ export interface MediaFetchResult {
 
 export async function fetchMediaChunk(
   initialUrl: string,
-  chunkSize: number = 50 * 1024 * 1024,
+  chunkSize: number = 10 * 1024 * 1024,
 ): Promise<MediaFetchResult> {
   const { url: targetUrl, isGoogleDrive } = resolveGoogleDriveUrl(initialUrl);
 
@@ -37,23 +37,21 @@ export async function fetchMediaChunk(
     // If it's Google Drive, it might be the rate-limit page
     if (isGoogleDrive) {
       throw new Error(
-        'Google Drive file is rate-limited. Please try again in 24 hours.',
+        'Google Drive file is rate-limited. Try again in 24 hours.',
       );
     }
     // Generic HTML response
     throw new Error(
-      'The URL links to a webpage, not a media file. Please provide a direct link.',
+      'URL links to a webpage, not a media file. Provide a direct link.',
     );
   }
 
   if (!headRes.ok) {
     if (headRes.status === 404) {
-      throw new Error(
-        'The media file could not be found. Check the URL for errors.',
-      );
+      throw new Error('Media file not found. Check the URL.');
     } else if (headRes.status === 403) {
       throw new Error(
-        'Access to this file is denied. The link may have expired or requires authentication.',
+        'Access denied. The link may have expired or requires authentication.',
       );
     } else {
       throw new Error(`Unable to access file (HTTP ${headRes.status}).`);
@@ -97,18 +95,60 @@ export async function fetchMediaChunk(
     `[Analyze] Fetch response received in ${Math.round(performance.now() - t0)}ms. Status: ${response.status}`,
   );
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch initial chunk: ${response.status} ${response.statusText}`,
+  let fileBuffer: Uint8Array;
+
+  // Strategy: "Turbo Mode" vs "Eco Mode"
+  // If the server respects Range (206), we use native arrayBuffer for speed.
+  // If the server ignores Range (200), we use a safe, pre-allocated stream reader to prevent OOM.
+  if (response.status === 206) {
+    console.log(
+      '[Analyze] Server accepted Range request (206). Using native optimized buffer.',
     );
+    const arrayBuffer = await response.arrayBuffer();
+    fileBuffer = new Uint8Array(arrayBuffer);
+  } else {
+    // Status 200: Server is sending the FULL file.
+    // We cannot use arrayBuffer() because it would try to load the entire file (e.g. 2GB) and crash.
+    // We must stream it manually, but efficiently.
+    console.warn(
+      '[Analyze] Server ignored Range request (200). Using fallback stream reader with 10MB limit.',
+    );
+
+    const SAFE_LIMIT = 10 * 1024 * 1024; // 10MB "Eco Mode" limit
+    const tempBuffer = new Uint8Array(SAFE_LIMIT); // Pre-allocate: Zero GC overhead
+    let offset = 0;
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Failed to retrieve response body stream');
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const spaceLeft = SAFE_LIMIT - offset;
+
+        if (value.byteLength > spaceLeft) {
+          // Buffer full: Copy what fits, then stop.
+          tempBuffer.set(value.subarray(0, spaceLeft), offset);
+          offset += spaceLeft;
+          console.log(
+            `[Analyze] Hit safe limit of ${SAFE_LIMIT} bytes. Cancelling stream.`,
+          );
+          await reader.cancel();
+          break;
+        } else {
+          tempBuffer.set(value, offset);
+          offset += value.byteLength;
+        }
+      }
+    } catch (err) {
+      console.warn('[Analyze] Stream reading interrupted or failed:', err);
+    }
+
+    // Create a view of the actual data we read (no copy)
+    fileBuffer = tempBuffer.subarray(0, offset);
   }
-
-  // Optimize: Use native arrayBuffer() instead of manual stream loop
-  // This moves the "work" from JS CPU time to Native I/O time, avoiding CPU limits.
-  const arrayBuffer = await response.arrayBuffer();
-  const fileBuffer = new Uint8Array(arrayBuffer);
-
-  console.log(`[Analyze] Loaded ${fileBuffer.byteLength} bytes into memory.`);
 
   console.log(`[Analyze] Loaded ${fileBuffer.byteLength} bytes into memory.`);
 

@@ -74,7 +74,6 @@ export async function uploadToPrivateBin(
   const adataBytes = new TextEncoder().encode(adataJson);
 
   // 3. Encrypt
-  // 3. Encrypt
   const encodedContent = new TextEncoder().encode(
     JSON.stringify({ paste: content }),
   );

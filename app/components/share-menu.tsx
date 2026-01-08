@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu';
 
+import { useHapticFeedback } from '../hooks/use-haptic';
 import { uploadToPrivateBin } from '../lib/privatebin';
 
 interface ShareMenuProps {
@@ -20,7 +21,9 @@ interface ShareMenuProps {
 
 export function ShareMenu({ data, url, className }: ShareMenuProps) {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [isHighlighted, setIsHighlighted] = useState(false);
   const fetchedData = useRef<Record<string, string>>({});
+  const { triggerSuccess } = useHapticFeedback();
 
   const handleShare = async (format: string, label: string) => {
     let content: string | undefined =
@@ -63,6 +66,11 @@ export function ShareMenu({ data, url, className }: ShareMenuProps) {
       await navigator.clipboard.writeText(newUrl);
       setShareUrl(newUrl);
 
+      // Trigger success haptic and highlight
+      triggerSuccess();
+      setIsHighlighted(true);
+      setTimeout(() => setIsHighlighted(false), 5000);
+
       toast.success('Link Copied', {
         id: toastId,
         description: `Secure ${label} link copied to clipboard.`,
@@ -82,7 +90,11 @@ export function ShareMenu({ data, url, className }: ShareMenuProps) {
       <Button
         variant="secondary"
         size="sm"
-        className={className}
+        className={`${className} ${
+          isHighlighted
+            ? 'border-green-500 ring-1 ring-green-500 transition-all duration-300'
+            : ''
+        }`}
         onClick={() => window.open(shareUrl, '_blank')}
       >
         <ExternalLink className="mr-2 h-4 w-4" />
@@ -101,17 +113,20 @@ export function ShareMenu({ data, url, className }: ShareMenuProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => handleShare('text', 'Text')}>
-          Share Text
+        <DropdownMenuItem onClick={() => handleShare('json', 'Object')}>
+          Share Object
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleShare('json', 'JSON')}>
           Share JSON
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleShare('html', 'HTML')}>
-          Share HTML
+        <DropdownMenuItem onClick={() => handleShare('text', 'Text')}>
+          Share Text
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleShare('xml', 'XML')}>
           Share XML
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleShare('html', 'HTML')}>
+          Share HTML
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

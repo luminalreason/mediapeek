@@ -1,27 +1,8 @@
+import { parseChapters } from '~/lib/media-utils';
 import type { MediaTrackJSON } from '~/types/media';
 
 export function ChapterSection({ menuTrack }: { menuTrack?: MediaTrackJSON }) {
-  if (!menuTrack || !menuTrack.extra) return null;
-
-  // Extract chapters from 'extra' object
-  // Keys like "_00_00_00_000"
-  const timeRegex = /^_\d{2}_\d{2}_\d{2}_\d{3}$/;
-
-  const chapters = Object.entries(menuTrack.extra)
-    .filter(([key]) => timeRegex.test(key))
-    .map(([key, value]) => {
-      // Convert "_00_00_00_000" to "00:00:00.000"
-      const time = key.substring(1).replace(/_/g, (match, offset) => {
-        if (offset === 8) return '.'; // Last underscore becomes dot
-        return ':';
-      });
-
-      return {
-        time,
-        name: value,
-      };
-    })
-    .sort((a, b) => a.time.localeCompare(b.time));
+  const chapters = parseChapters(menuTrack);
 
   if (chapters.length === 0) return null;
 

@@ -10,6 +10,8 @@ import {
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu';
 
+import { useHapticFeedback } from '../hooks/use-haptic';
+
 interface CopyMenuProps {
   data: Record<string, string>;
   url: string;
@@ -19,6 +21,7 @@ interface CopyMenuProps {
 export function CopyMenu({ data, url, className }: CopyMenuProps) {
   // Local cache for fetched formats
   const fetchedData = useRef<Record<string, string>>({});
+  const { triggerSuccess } = useHapticFeedback();
 
   const handleCopy = async (format: string, label: string) => {
     let content: string | undefined =
@@ -55,6 +58,7 @@ export function CopyMenu({ data, url, className }: CopyMenuProps) {
 
     try {
       await navigator.clipboard.writeText(content);
+      triggerSuccess();
       toast.success('Copied to clipboard', {
         description: `${label} format copied successfully.`,
         duration: 2000,
@@ -77,17 +81,20 @@ export function CopyMenu({ data, url, className }: CopyMenuProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => handleCopy('text', 'Text')}>
-          Copy Text
+        <DropdownMenuItem onClick={() => handleCopy('json', 'Object')}>
+          Copy Object
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleCopy('json', 'JSON')}>
           Copy JSON
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleCopy('html', 'HTML')}>
-          Copy HTML
+        <DropdownMenuItem onClick={() => handleCopy('text', 'Text')}>
+          Copy Text
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleCopy('xml', 'XML')}>
           Copy XML
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleCopy('html', 'HTML')}>
+          Copy HTML
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

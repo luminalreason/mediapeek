@@ -19,10 +19,12 @@ import {
 import { Toaster } from '~/components/ui/sonner';
 
 import type { Route } from './+types/root';
-import { themeSessionResolver } from './sessions.server';
+import { createThemeSessionResolverWithSecret } from './sessions.server';
 
 export const links: Route.LinksFunction = () => [
-  { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+  { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
+
+  { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
   { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
   {
     rel: 'preconnect',
@@ -35,8 +37,10 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { getTheme } = await themeSessionResolver(request);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { getTheme } = await createThemeSessionResolverWithSecret(
+    context.cloudflare.env.SESSION_SECRET,
+  )(request);
   return {
     theme: getTheme(),
   };
@@ -62,6 +66,45 @@ function AppWithProviders({ children }: { children: React.ReactNode }) {
         <Meta />
         <PreventFlashOnWrongTheme ssrTheme={Boolean(data?.theme)} />
         <Links />
+        {/* Dynamic Favicons */}
+        {theme === 'light' ? (
+          <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/favicon-dark-32x32.png"
+          />
+        ) : theme === 'dark' ? (
+          <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/favicon-light-32x32.png"
+          />
+        ) : (
+          /* System Default logic (when theme is null/undefined) */
+          <>
+            <link
+              rel="icon"
+              type="image/png"
+              sizes="32x32"
+              href="/favicon-dark-32x32.png"
+              media="(prefers-color-scheme: light)"
+            />
+            <link
+              rel="icon"
+              type="image/png"
+              sizes="32x32"
+              href="/favicon-light-32x32.png"
+              media="(prefers-color-scheme: dark)"
+            />
+          </>
+        )}
+        <script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+          async
+          defer
+        />
       </head>
       <body className="bg-background text-foreground antialiased">
         <div className="w-full">
@@ -80,16 +123,14 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  let message = 'Oops!';
+  let message = 'Error';
   let details = 'An unexpected error occurred.';
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
     message = error.status === 404 ? '404' : 'Error';
     details =
-      error.status === 404
-        ? 'The requested page could not be found.'
-        : error.statusText || details;
+      error.status === 404 ? 'Page not found.' : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
     stack = error.stack;

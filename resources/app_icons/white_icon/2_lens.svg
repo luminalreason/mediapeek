@@ -1,0 +1,43 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!--
+        Layer 3: Lens (V23 - Black Theme)
+        - Geometry: V19 (Centered Alignment).
+        - Center: 680, 540. Radius 270.
+        - Color: BLACK strokes, fills, and gradients.
+    -->
+    <defs>
+        <!-- Black Lens Gradient (Smoked Glass) -->
+        <linearGradient id="lensGradientV23" x1="200" y1="200" x2="800" y2="800" gradientUnits="userSpaceOnUse">
+            <stop stop-color="black" stop-opacity="0.4" />
+            <stop offset="1" stop-color="black" stop-opacity="0.05" />
+        </linearGradient>
+
+        <!-- Shadow (remains black) -->
+        <filter id="shadowV23" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="20" stdDeviation="25" flood-color="#000000" flood-opacity="0.3" />
+        </filter>
+    </defs>
+
+    <g filter="url(#shadowV23)">
+        <!-- Lens Circle -->
+        <circle cx="680" cy="540" r="270" fill="url(#lensGradientV23)" stroke="black" stroke-width="20" stroke-opacity="0.8" />
+
+        <clipPath id="lensClipV23">
+             <circle cx="680" cy="540" r="270" />
+        </clipPath>
+
+        <g clip-path="url(#lensClipV23)">
+             <!--
+                Zoomed Lines (Centered V19 Logic) but BLACK.
+             -->
+             <!-- Line 2: Center Y=390. -->
+             <rect x="200" y="390" width="800" height="100" rx="50" fill="black" opacity="1.0" />
+
+             <!-- Line 3: Center Y=540. -->
+             <rect x="200" y="540" width="600" height="100" rx="50" fill="black" opacity="1.0" />
+
+             <!-- Line 4: Center Y=690. -->
+             <rect x="200" y="690" width="750" height="100" rx="50" fill="black" opacity="1.0" />
+        </g>
+    </g>
+</svg>

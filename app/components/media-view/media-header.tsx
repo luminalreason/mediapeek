@@ -3,8 +3,7 @@ import { ShareMenu } from '~/components/share-menu';
 import { Label } from '~/components/ui/label';
 import { Separator } from '~/components/ui/separator';
 import { Switch } from '~/components/ui/switch';
-import { formatDuration, formatSize } from '~/lib/formatters';
-import { getAccessibilityFeatures } from '~/lib/media-utils';
+import { getMediaBadges } from '~/lib/media-utils';
 import type { MediaTrackJSON } from '~/types/media';
 
 import { MediaIcon } from './media-icon';
@@ -32,91 +31,30 @@ export function MediaHeader({
 }: MediaHeaderProps) {
   if (!generalTrack) return null;
 
-  const headerIcons: string[] = [];
-  // Use a loose type for accessing non-standard fields like "FileSize/String"
-  const trackAny = generalTrack as unknown as Record<string, string>;
-
-  // 1. Resolution
-  if (videoTracks.length > 0) {
-    const widthRaw = videoTracks[0]['Width'] || '0';
-    const width = parseInt(widthRaw, 10);
-
-    if (!isNaN(width)) {
-      if (width >= 3840) headerIcons.push('4k');
-      else if (width >= 1920) headerIcons.push('hd');
-      else if (width <= 1280) headerIcons.push('sd');
-    }
-
-    // HDR / Dolby Vision
-    const hdrFormat = videoTracks[0]['HDR_Format'] || '';
-    const hdrCompatibility = videoTracks[0]['HDR_Format_Compatibility'] || '';
-
-    if (hdrFormat.includes('HDR10+') || hdrCompatibility.includes('HDR10+')) {
-      headerIcons.push('hdr10-plus');
-    } else if (hdrFormat.includes('HDR')) {
-      if (!hdrFormat.includes('Dolby Vision')) {
-        headerIcons.push('hdr');
-      }
-    }
-
-    if (hdrFormat.includes('Dolby Vision')) {
-      headerIcons.push('dolby-vision');
-    }
-  }
-
-  // 2. Audio Tech
-  let hasAtmos = false;
-  let hasDTS = false;
-  let hasDolby = false;
-
-  audioTracks.forEach((a) => {
-    // Keys in JSON: "Format", "Format_Commercial_IfAny", "Title"
-    const fmt = a['Format'] || '';
-    const commercial = a['Format_Commercial_IfAny'] || '';
-    const title = a['Title'] || '';
-    const combined = (fmt + commercial + title).toLowerCase();
-
-    if (combined.includes('atmos')) hasAtmos = true;
-    if (combined.includes('dts')) hasDTS = true;
-    if (
-      combined.includes('dolby') ||
-      combined.includes('ac-3') ||
-      combined.includes('e-ac-3')
-    )
-      hasDolby = true;
-  });
-
-  if (hasAtmos) headerIcons.push('dolby-atmos');
-  else if (
-    hasDolby &&
-    !audioTracks.some((a) => (a['Format'] || '').includes('DTS'))
-  ) {
-    headerIcons.push('dolby');
-  }
-
-  if (hasDTS) headerIcons.push('dts');
-
-  // 3. Subtitle Tech (SDH & CC & AD)
-  const { hasSDH, hasCC, hasAD } = getAccessibilityFeatures(
-    audioTracks,
-    textTracks,
-    generalTrack,
-  );
-  if (hasCC) headerIcons.push('cc');
-  if (hasSDH) headerIcons.push('sdh');
-  if (hasAD) headerIcons.push('ad');
-
+  // 1. Resolutions, Audio, Subtitle Badges
   const filenameRaw =
-    generalTrack['CompleteName'] || generalTrack['File_Name'] || 'Unknown';
+    (generalTrack['CompleteName'] as string) ||
+    (generalTrack['File_Name'] as string) ||
+    'Unknown';
   // Extract basename
   const displayFilename =
     filenameRaw.split('/').pop()?.split('\\').pop() || filenameRaw;
 
-  // Access fields via trackAny to avoid TS errors
+  const headerIcons = getMediaBadges(
+    videoTracks,
+    audioTracks,
+    textTracks,
+    generalTrack,
+  );
+
   const fileSize =
-    trackAny['FileSize/String'] || formatSize(generalTrack['FileSize']);
+    generalTrack['FileSize_String'] ||
+    (generalTrack['FileSize/String'] as string) ||
+    (generalTrack['FileSize'] as string);
   const duration =
-    trackAny['Duration/String'] || formatDuration(generalTrack['Duration']);
+    generalTrack['Duration_String'] ||
+    (generalTrack['Duration/String'] as string) ||
+    (generalTrack['Duration'] as string);
 
   return (
     <div className="bg-background/95 supports-backdrop-filter:bg-background/60 sticky top-0 z-50 -mx-4 flex flex-col gap-4 px-4 pt-4 pb-0 backdrop-blur-md transition-all md:-mx-8 md:px-8">

@@ -2,7 +2,7 @@
 
 import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useActionState } from 'react';
+import { useActionState, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { MediaSkeleton } from '~/components/media-skeleton';
@@ -18,6 +18,7 @@ import { useClipboardSuggestion } from '~/hooks/use-clipboard-suggestion';
 import { useHapticFeedback } from '../hooks/use-haptic';
 import { MediaView } from './media-view';
 import { ModeToggle } from './mode-toggle';
+import { TurnstileWidget } from './turnstile-widget';
 
 // Separate component to utilize useFormStatus
 function SubmitButton() {
@@ -74,14 +75,26 @@ const initialState: FormState = {
 };
 
 export function MediaForm() {
-  const { triggerCreativeSuccess, triggerError } = useHapticFeedback();
+  const { triggerCreativeSuccess, triggerError, triggerSuccess } =
+    useHapticFeedback();
+  const turnstileInputRef = useRef<HTMLInputElement>(null);
   const [state, formAction, isPending] = useActionState(
     async (_prevState: FormState, formData: FormData): Promise<FormState> => {
       const url = formData.get('url') as string;
+      const turnstileToken = formData.get('cf-turnstile-response') as string;
+
       if (!url) {
         return {
           results: null,
-          error: 'Please enter a valid URL.',
+          error: 'Enter a valid URL.',
+          status: '',
+        };
+      }
+
+      if (!turnstileToken) {
+        return {
+          results: null,
+          error: 'Complete the verification.',
           status: '',
         };
       }
@@ -92,6 +105,11 @@ export function MediaForm() {
         // --- SERVER ANALYSIS ---
         const response = await fetch(
           `/resource/analyze?url=${encodeURIComponent(url)}&format=json,text`,
+          {
+            headers: {
+              'CF-Turnstile-Response': turnstileToken,
+            },
+          },
         );
 
         const contentType = response.headers.get('content-type');
@@ -116,7 +134,7 @@ export function MediaForm() {
 
         if (!response.ok || data.error) {
           throw new Error(
-            data.error || 'Unable to analyze this URL. Please verify the link.',
+            data.error || 'Unable to analyze URL. Verify the link is correct.',
           );
         }
         const resultData = data.results || null;
@@ -155,27 +173,54 @@ export function MediaForm() {
         <div className="relative z-10 space-y-10">
           <div>
             {/* Row 1: Title and Desktop Actions */}
-            <div className="flex items-center justify-between">
+            {/* Header Group: Icon + Title + Actions */}
+            {/* Header Group: Icon + Title + Actions */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
+              {/* Icon */}
               <a
                 href="https://mediapeek.plnk.workers.dev/"
-                className="no-underline"
+                className="block no-underline"
               >
-                <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-                  MediaPeek
-                </h1>
+                <div className="relative h-16 w-16 drop-shadow-md">
+                  <img
+                    src="/icons/icon-light.webp"
+                    alt="MediaPeek Logo"
+                    className="hidden h-full w-full object-contain dark:block"
+                  />
+                  <img
+                    src="/icons/icon-dark.webp"
+                    alt="MediaPeek Logo"
+                    className="h-full w-full object-contain dark:hidden"
+                  />
+                </div>
               </a>
-              <div className="flex items-center gap-2">
-                <GithubButton className="hidden sm:inline-flex" />
-                <ModeToggle />
-              </div>
-            </div>
 
-            {/* Row 2: Description and Mobile Actions */}
-            <div className="flex w-full items-center justify-between gap-2">
-              <p className="text-muted-foreground leading-7">
-                Get detailed metadata for any media file.
-              </p>
-              <GithubButton className="inline-flex sm:hidden" />
+              {/* Content Column: Title/Actions + Description */}
+              <div className="flex flex-1 flex-col">
+                {/* Title and Desktop Actions */}
+                <div className="flex items-center justify-between">
+                  <a
+                    href="https://mediapeek.plnk.workers.dev/"
+                    className="no-underline"
+                  >
+                    <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+                      MediaPeek
+                    </h1>
+                  </a>
+                  <div className="flex items-center gap-2">
+                    <GithubButton className="hidden sm:inline-flex" />
+                    <ModeToggle />
+                  </div>
+                </div>
+
+                {/* Description and Mobile Actions */}
+                <div className="flex w-full items-center justify-between gap-2">
+                  <p className="text-muted-foreground leading-7">
+                    Get detailed metadata for any media file.
+                  </p>
+                  <GithubButton className="inline-flex sm:hidden" />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -194,6 +239,7 @@ export function MediaForm() {
                     type="submit"
                     onClick={(e) => {
                       e.preventDefault();
+                      triggerSuccess();
                       // Hide immediately and ignore this URL until it changes
                       ignoreClipboard();
 
@@ -241,6 +287,22 @@ export function MediaForm() {
                   <SubmitButton />
                 </InputGroup>
               </div>
+            </div>
+
+            <div className="flex justify-center">
+              <TurnstileWidget
+                onVerify={(token) => {
+                  if (turnstileInputRef.current) {
+                    turnstileInputRef.current.value = token;
+                  }
+                }}
+              />
+              <input
+                type="hidden"
+                name="cf-turnstile-response"
+                id="cf-turnstile-response"
+                ref={turnstileInputRef}
+              />
             </div>
           </form>
 

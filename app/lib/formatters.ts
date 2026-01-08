@@ -1,58 +1,3 @@
-export const formatSize = (sizeStr?: string | number) => {
-  if (!sizeStr) return 'Unknown Size';
-  const size = typeof sizeStr === 'string' ? parseInt(sizeStr, 10) : sizeStr;
-  if (isNaN(size)) return sizeStr.toString();
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  if (size < 1024 * 1024 * 1024)
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-};
-
-export const formatDuration = (durationStr?: string | number) => {
-  if (!durationStr) return '';
-  const durationMs =
-    typeof durationStr === 'string'
-      ? parseFloat(durationStr) * 1000
-      : durationStr;
-  if (isNaN(durationMs)) return durationStr.toString();
-
-  const seconds = Math.floor((durationMs / 1000) % 60);
-  const minutes = Math.floor((durationMs / (1000 * 60)) % 60);
-  const hours = Math.floor(durationMs / (1000 * 60 * 60));
-
-  const parts = [];
-  if (hours > 0) parts.push(`${hours} h`);
-  if (minutes > 0) parts.push(`${minutes} min`);
-  if (seconds > 0 || parts.length === 0) parts.push(`${seconds} s`);
-
-  return parts.join(' ');
-};
-
-export const formatBitrate = (bitrateStr?: string) => {
-  if (!bitrateStr) return '';
-  const bitrate = parseInt(bitrateStr, 10);
-  if (isNaN(bitrate)) return bitrateStr;
-
-  if (bitrate > 1000000) {
-    return `${(bitrate / 1000000).toFixed(1)} Mb/s`;
-  }
-  if (bitrate > 1000) {
-    return `${(bitrate / 1000).toFixed(0)} kb/s`;
-  }
-  return `${bitrate} b/s`;
-};
-
-export const getLanguageName = (code?: string) => {
-  if (!code) return 'Unknown Language';
-  try {
-    // MediaInfo often returns 'en', 'hi', etc.
-    return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || code;
-  } catch {
-    return code;
-  }
-};
-
 export const mapDolbyProfile = (profile?: string) => {
   if (!profile) return '';
   if (profile.includes('dvhe.08')) return 'Profile 8.1';
@@ -61,22 +6,73 @@ export const mapDolbyProfile = (profile?: string) => {
   return profile;
 };
 
-export const formatChannels = (channelsStr?: string) => {
-  if (!channelsStr) return '';
-  const c = parseInt(channelsStr.replace(/\D/g, ''), 10);
-  if (isNaN(c)) return channelsStr;
-
-  if (c === 2) return 'Stereo';
-  if (c === 6) return '5.1 Channels';
-  if (c === 8) return '7.1 Channels';
-
-  return `${c} Channels`;
+export const cleanMetadataString = (s: string | undefined): string => {
+  if (!s) return '';
+  return s.trim();
 };
 
-export const formatSamplingRate = (rateStr?: string | number) => {
-  if (!rateStr) return '';
-  const rate = typeof rateStr === 'string' ? parseFloat(rateStr) : rateStr;
-  if (isNaN(rate)) return rateStr.toString();
+export const cleanBitrateString = (s: string | undefined): string => {
+  if (!s) return '';
+  // Replace space between digits: "5 844" -> "5844"
+  return s.replace(/(\d)\s+(?=\d)/g, '$1');
+};
 
-  return `${(rate / 1000).toFixed(1)} kHz`;
+export const cleanTrackTitle = (
+  title: string | undefined,
+  langName: string | undefined,
+): string | null => {
+  if (!title || !langName) return null;
+
+  let displayTitle = title;
+
+  // Create list of names to remove
+  // Escape special characters for regex
+  const escapedName = langName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const langRegex = new RegExp(`\\b${escapedName}\\b`, 'gi');
+  displayTitle = displayTitle.replace(langRegex, '');
+
+  displayTitle = displayTitle.trim();
+
+  // Clean up leading/trailing punctuation that might remain (e.g. " (SDH)" -> "(SDH)", ", Title" -> "Title")
+  return cleanMetadataString(displayTitle);
+};
+
+export const cleanRedundantAudioTitle = (title: string | undefined | null) => {
+  if (!title) return null;
+  // regex to match "Surround X.X" or "Stereo" (case insensitive)
+  const regex = /\b(Surround\s+\d+(\.\d+)?|Stereo)\b/gi;
+  const cleaned = title.replace(regex, '').trim();
+  return cleanMetadataString(cleaned) || null;
+};
+
+export const formatAudioChannels = (
+  channels?: number | string,
+  positions?: string,
+): string => {
+  const count = Number(channels);
+  if (!channels || isNaN(count)) return '';
+
+  const cleanPositions = (positions || '').toUpperCase();
+  const lfeCount = (cleanPositions.match(/\bLFE\d*\b/g) || []).length;
+
+  // Detect height/top channels: Tfl, Tfr, Tbl, Tbr, Tsl, Tsr, Thl, Thr, Tfc, Tbc, Vhl, Vhr, Tc, Tcs
+  const heightRegex =
+    /\b(TFL|TFR|TBL|TBR|TSL|TSR|THL|THR|TFC|TBC|VHL|VHR|TC|TCS)\b/g;
+  const heightCount = (cleanPositions.match(heightRegex) || []).length;
+
+  const mainCount = count - lfeCount - heightCount;
+
+  let layout = `${mainCount}.${lfeCount}`;
+  if (heightCount > 0) {
+    layout += `.${heightCount}`; // e.g., 5.1.4
+  }
+
+  switch (layout) {
+    case '1.0':
+      return 'Mono';
+    case '2.0':
+      return 'Stereo';
+    default:
+      return `${layout} channel`;
+  }
 };

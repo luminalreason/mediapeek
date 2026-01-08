@@ -1,40 +1,5 @@
+import { MEDIA_CONSTANTS } from '~/lib/media/constants';
 import type { MediaTrackJSON } from '~/types/media';
-
-/**
- * Calculates the bitrate from various possible fields in the track or falls back to general track.
- */
-export const getBitrate = (
-  videoTrack: MediaTrackJSON,
-  generalTrack?: MediaTrackJSON,
-): string | null | undefined => {
-  if (videoTrack['BitRate']) return videoTrack['BitRate'];
-  if (videoTrack['BitRate_Measured']) return videoTrack['BitRate_Measured'];
-  if (videoTrack['BitRate_Maximum']) return videoTrack['BitRate_Maximum'];
-  if (videoTrack['BitRate_Nominal']) return videoTrack['BitRate_Nominal'];
-  // Fallback to OverallBitRate from General if available
-  if (generalTrack && generalTrack['OverallBitRate'])
-    return generalTrack['OverallBitRate'];
-  return null;
-};
-
-/**
- * Calculates Bits/(Pixel*Frame)
- */
-export const calculateBitsPerPixel = (
-  videoTrack: MediaTrackJSON,
-  generalTrack?: MediaTrackJSON,
-): string | null => {
-  const w = parseInt(videoTrack['Width'] || '0', 10);
-  const h = parseInt(videoTrack['Height'] || '0', 10);
-  const fps = parseFloat(videoTrack['FrameRate'] || '0');
-  const brStr = getBitrate(videoTrack, generalTrack);
-  const br = parseInt(brStr || '0', 10);
-
-  if (w > 0 && h > 0 && fps > 0 && br > 0) {
-    return (br / (w * h * fps)).toFixed(3);
-  }
-  return null;
-};
 
 /**
  * Checks if the filename indicates an Apple TV source.
@@ -83,8 +48,8 @@ export const getAccessibilityFeatures = (
     (() => {
       if (!generalTrack) return false;
       const fileName = (
-        generalTrack['File_Name'] ||
-        generalTrack['CompleteName'] || // Fallback
+        (generalTrack['File_Name'] as string) ||
+        (generalTrack['CompleteName'] as string) || // Fallback
         ''
       ).toLowerCase();
 
@@ -118,4 +83,160 @@ export const getAccessibilityFeatures = (
   });
 
   return { hasSDH, hasCC, hasAD };
+};
+
+export const getMediaBadges = (
+  videoTracks: MediaTrackJSON[],
+  audioTracks: MediaTrackJSON[],
+  textTracks: MediaTrackJSON[],
+  generalTrack?: MediaTrackJSON,
+): string[] => {
+  const icons: string[] = [];
+  const { BADGES, TOKENS } = MEDIA_CONSTANTS;
+
+  // Filename for IMAX check
+  const filenameRaw =
+    (generalTrack?.['CompleteName'] as string) ||
+    (generalTrack?.['File_Name'] as string) ||
+    '';
+  const displayFilename =
+    filenameRaw.split('/').pop()?.split('\\').pop() || filenameRaw;
+
+  // 1. Resolution
+  if (videoTracks.length > 0) {
+    const widthRaw = videoTracks[0]['Width'] || '0';
+    const width = Number(widthRaw);
+
+    if (!isNaN(width)) {
+      if (width >= 3840) icons.push(BADGES.RESOLUTION_4K);
+      else if (width >= 1920) icons.push(BADGES.RESOLUTION_HD);
+      else if (width <= 1280) icons.push(BADGES.RESOLUTION_SD);
+    }
+
+    // IMAX Detection
+    const aspectRatio = Number(videoTracks[0]['DisplayAspectRatio'] || 0);
+    // Allow small margin of error for aspect ratios (epsilon)
+    const isImaxRatio =
+      Math.abs(aspectRatio - 1.43) < 0.02 || Math.abs(aspectRatio - 1.9) < 0.02;
+
+    if (
+      displayFilename.toUpperCase().includes(TOKENS.IMAX.toUpperCase()) ||
+      isImaxRatio
+    ) {
+      icons.push(BADGES.IMAX);
+    }
+
+    // HDR / Dolby Vision
+    const hdrFormat = videoTracks[0]['HDR_Format'] || '';
+    const hdrCompatibility = videoTracks[0]['HDR_Format_Compatibility'] || '';
+
+    if (
+      hdrFormat.includes(TOKENS.HDR10_PLUS) ||
+      hdrCompatibility.includes(TOKENS.HDR10_PLUS)
+    ) {
+      icons.push(BADGES.HDR10_PLUS); // 'hdr10-plus'
+    } else if (
+      hdrFormat.includes('HDR') ||
+      hdrCompatibility.includes('HDR10')
+    ) {
+      // 'HDR'
+      if (!hdrFormat.includes('Dolby Vision')) {
+        icons.push(BADGES.HDR);
+      }
+    }
+
+    if (hdrFormat.includes('Dolby Vision')) {
+      icons.push(BADGES.DOLBY_VISION);
+    }
+
+    // AV1 Detection
+    if (videoTracks.some((v) => v['Format'] === 'AV1')) {
+      icons.push(BADGES.AV1);
+    }
+  }
+
+  // 2. Audio Tech
+  let hasAtmos = false;
+  let hasDTSX = false;
+  let hasDTS = false;
+  let hasDolby = false;
+
+  audioTracks.forEach((a) => {
+    // Keys in JSON: "Format", "Format_Commercial_IfAny", "Title"
+    const fmt = a['Format'] || '';
+    const commercial = a['Format_Commercial_IfAny'] || '';
+    const title = a['Title'] || '';
+    const additionalFeatures = a['Format_AdditionalFeatures'] || '';
+    const combined = (fmt + commercial + title).toLowerCase();
+
+    if (combined.includes(TOKENS.ATMOS)) hasAtmos = true;
+
+    // DTS Logic
+    if (additionalFeatures.includes('XLL X')) {
+      // Generic XLL X check
+      hasDTSX = true;
+    } else if (additionalFeatures.includes(TOKENS.XLL)) {
+      hasDTS = true;
+    } else if (combined.includes(TOKENS.DTS)) {
+      hasDTS = true;
+    }
+
+    if (
+      combined.includes(TOKENS.DOLBY) ||
+      combined.includes(TOKENS.AC3) ||
+      combined.includes(TOKENS.EAC3)
+    )
+      hasDolby = true;
+  });
+
+  if (hasAtmos) icons.push(BADGES.DOLBY_ATMOS);
+  else if (hasDolby && !hasDTS && !hasDTSX) {
+    icons.push(BADGES.DOLBY_AUDIO);
+  }
+
+  if (hasDTSX) icons.push(BADGES.DTS_X);
+  else if (hasDTS) icons.push(BADGES.DTS);
+
+  // 3. Subtitle Tech (SDH & CC & AD)
+  const accessibleFeatures = getAccessibilityFeatures(
+    audioTracks,
+    textTracks,
+    generalTrack,
+  );
+  if (accessibleFeatures.hasCC) icons.push(BADGES.CC);
+  if (accessibleFeatures.hasSDH) icons.push(BADGES.SDH);
+  if (accessibleFeatures.hasAD) icons.push(BADGES.AD);
+
+  return icons;
+};
+
+export interface ChapterItem {
+  time: string;
+  name: string;
+}
+
+export const parseChapters = (
+  menuTrack: MediaTrackJSON | undefined,
+): ChapterItem[] => {
+  if (!menuTrack || !menuTrack.extra) return [];
+
+  // Extract chapters from 'extra' object
+  // Keys like "_00_00_00_000"
+  const timeRegex = /^_\d{2}_\d{2}_\d{2}_\d{3}$/;
+
+  return Object.entries(menuTrack.extra)
+    .filter(([key]) => timeRegex.test(key))
+    .map(([key, value]) => {
+      // Convert "_00_00_00_000" to "00:00:00.000"
+      const time = key.substring(1).replace(/_/g, (match, offset) => {
+        if (offset === 8) return '.'; // Last underscore becomes dot
+        return ':';
+      });
+
+      return {
+        time,
+        name: value,
+      };
+    })
+    .sort((a, b) => a.time.localeCompare(b.time));
 };

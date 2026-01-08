@@ -1,13 +1,12 @@
-import { formatBitrate, mapDolbyProfile } from '~/lib/formatters';
-import { calculateBitsPerPixel, getBitrate } from '~/lib/media-utils';
+import { cleanBitrateString, mapDolbyProfile } from '~/lib/formatters';
 import type { MediaTrackJSON } from '~/types/media';
+
+import { MediaDetailItem } from './media-detail-item';
 
 export function VideoSection({
   videoTracks,
-  generalTrack,
 }: {
   videoTracks: MediaTrackJSON[];
-  generalTrack?: MediaTrackJSON;
 }) {
   if (videoTracks.length === 0) return null;
 
@@ -18,131 +17,133 @@ export function VideoSection({
       </div>
       <div className="grid gap-4">
         {videoTracks.map((video, idx) => {
-          const codec =
-            video['Format'] === 'HEVC'
-              ? 'HEVC (High Efficiency Video Coding)'
-              : video['Format'];
+          let codec = video['Format'];
+          const formatInfo = video['Format_Info'] || video['Format/Info'];
+
+          if (formatInfo) {
+            codec = `${codec} (${formatInfo})`;
+          }
           const profile = video['Format_Profile'];
           const level = video['Format_Level'];
           const tier = video['Format_Tier'];
-          const frMode =
-            video['FrameRate_Mode'] === 'CFR'
-              ? 'CFR'
-              : video['FrameRate_Mode'] === 'VFR'
-                ? 'VFR'
-                : video['FrameRate_Mode'];
+
+          const profileStr = [
+            profile,
+            level ? `@L${level}` : '',
+            tier ? `@${tier}` : '',
+          ]
+            .filter(Boolean)
+            .join('');
+
+          const rawBitrate =
+            video['BitRate_String'] || video['OverallBitRate_String'];
+          const bitrateStr = rawBitrate ? cleanBitrateString(rawBitrate) : null;
+          const bpf = video['BitsPixel_Frame'];
 
           return (
             <div
               key={idx}
               className="border-border/40 grid gap-x-8 gap-y-6 border-b pb-6 text-sm last:border-0 sm:grid-cols-2 lg:grid-cols-4"
             >
-              {/* Row 1 - Codec, Res, Bitrate, FR */}
-              <div>
-                <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                  Codec
-                </span>
+              <MediaDetailItem label="Codec">
                 <div className="flex flex-col">
                   <span className="text-foreground/85 font-semibold">
                     {codec}
                   </span>
-                  {profile && (
-                    <span className="text-muted-foreground text-xs">
-                      {profile}
-                      {level ? `@L${level}` : ''}
-                      {tier ? `@${tier}` : ''}
+                  {video['CodecID'] && (
+                    <span className="text-muted-foreground text-xs font-normal">
+                      {video['CodecID']}
+                    </span>
+                  )}
+                  {profileStr && (
+                    <span className="text-muted-foreground text-xs font-normal">
+                      {profileStr}
                     </span>
                   )}
                 </div>
-              </div>
-              <div>
-                <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                  Resolution
-                </span>
-                <span className="font-semibold">
-                  {video['Width']} x {video['Height']}
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                  Bitrate
-                </span>
-                <span className="font-semibold">
-                  {formatBitrate(getBitrate(video, generalTrack) || '') ||
-                    'Unknown'}
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                  Frame Rate
-                </span>
+              </MediaDetailItem>
+              <MediaDetailItem label="Resolution">
                 <div className="flex flex-col">
                   <span className="text-foreground/85 font-semibold">
-                    {video['FrameRate'] || 'Unknown'}
+                    {video['Width']} x {video['Height']}
                   </span>
-                  {frMode && (
+                  {video['DisplayAspectRatio'] && (
                     <span className="text-muted-foreground text-xs font-normal">
-                      ({frMode})
+                      {video['DisplayAspectRatio_String'] ||
+                        video['DisplayAspectRatio']}
                     </span>
                   )}
                 </div>
-              </div>
-
-              {/* Row 2 - Chroma, BitDepth, ColorPrimaries */}
-              {video['ChromaSubsampling'] && (
-                <div>
-                  <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                    Chroma Subsampling
-                  </span>
-                  <span className="text-foreground/85 font-semibold">
-                    {video['ChromaSubsampling']}
-                  </span>
-                </div>
-              )}
-              {video['BitDepth'] && (
-                <div>
-                  <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                    Bit Depth
-                  </span>
-                  <span className="text-foreground/85 font-semibold">
-                    {video['BitDepth']} bits
-                  </span>
-                </div>
-              )}
-              {/* Bits/(Pixel*Frame) Calculation */}
-              {(() => {
-                const bpf = calculateBitsPerPixel(video, generalTrack);
-                if (bpf) {
-                  return (
-                    <div>
-                      <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                        Bits/(Pixel*Frame)
+              </MediaDetailItem>
+              {bitrateStr && (
+                <MediaDetailItem label="Bitrate">
+                  <div className="flex flex-col">
+                    <span className="text-foreground/85 font-semibold">
+                      {bitrateStr}
+                    </span>
+                    {video['BitRate_Mode'] && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {video['BitRate_Mode_String'] || video['BitRate_Mode']}
                       </span>
+                    )}
+                    {bpf && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        Bits/(Pixel*Frame): {bpf}
+                      </span>
+                    )}
+                  </div>
+                </MediaDetailItem>
+              )}
+              <MediaDetailItem label="Frame Rate">
+                <div className="flex flex-col">
+                  <span className="text-foreground/85 font-semibold">
+                    {video['FrameRate_String'] ||
+                      video['FrameRate'] ||
+                      'Unknown'}
+                  </span>
+                  {video['FrameRate_Original'] && (
+                    <span className="text-muted-foreground text-xs font-normal">
+                      Original: {video['FrameRate_Original']}
+                    </span>
+                  )}
+                  {video['FrameRate_Mode'] && (
+                    <span className="text-muted-foreground text-xs font-normal">
+                      {video['FrameRate_Mode_String'] ||
+                        video['FrameRate_Mode']}
+                    </span>
+                  )}
+                </div>
+              </MediaDetailItem>
+
+              {(video['colour_primaries'] ||
+                video['transfer_characteristics'] ||
+                video['matrix_coefficients']) && (
+                <MediaDetailItem label="Colorimetry">
+                  <div className="flex flex-col">
+                    {video['colour_primaries'] && (
                       <span className="text-foreground/85 font-semibold">
-                        {bpf}
+                        {video['colour_primaries']}
                       </span>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              {video['colour_primaries'] && (
-                <div>
-                  <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                    Color Primaries
-                  </span>
-                  <span className="text-foreground/85 font-semibold">
-                    {video['colour_primaries']}
-                  </span>
-                </div>
+                    )}
+                    {video['matrix_coefficients'] && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {video['matrix_coefficients']}
+                      </span>
+                    )}
+                    {video['transfer_characteristics'] && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {video['transfer_characteristics']} (Transfer)
+                      </span>
+                    )}
+                  </div>
+                </MediaDetailItem>
               )}
 
-              {/* Row 3 - HDR, Transfer, Mastering Display */}
               {video['HDR_Format'] && (
-                <div className="sm:col-span-2 lg:col-span-1">
-                  <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                    High Dynamic Range
-                  </span>
+                <MediaDetailItem
+                  label="High Dynamic Range"
+                  value={video['HDR_Format']}
+                >
                   <div className="flex flex-col gap-0.5">
                     <span className="text-foreground/85 font-semibold">
                       {video['HDR_Format']}
@@ -158,49 +159,146 @@ export function VideoSection({
                       </span>
                     )}
                   </div>
-                </div>
+                </MediaDetailItem>
               )}
 
-              {video['transfer_characteristics'] && (
-                <div>
-                  <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                    Transfer Characteristics
-                  </span>
-                  <span className="text-foreground/85 font-semibold">
-                    {video['transfer_characteristics']}
-                  </span>
-                </div>
+              {(video['MasteringDisplay_ColorPrimaries'] ||
+                video['MasteringDisplay_Luminance']) && (
+                <MediaDetailItem label="Mastering Display">
+                  <div className="flex flex-col">
+                    {video['MasteringDisplay_ColorPrimaries'] && (
+                      <span className="text-foreground/85 font-semibold">
+                        {video['MasteringDisplay_ColorPrimaries']}
+                      </span>
+                    )}
+                    {video['MasteringDisplay_Luminance'] && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {video['MasteringDisplay_Luminance']}
+                      </span>
+                    )}
+                  </div>
+                </MediaDetailItem>
               )}
 
-              {video['MasteringDisplay_ColorPrimaries'] && (
-                <div>
-                  <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                    Mastering Display Color Primaries
-                  </span>
-                  <span className="text-foreground/85 font-semibold">
-                    {video['MasteringDisplay_ColorPrimaries']}
-                  </span>
-                </div>
+              {(video['ColorSpace'] ||
+                video['ChromaSubsampling'] ||
+                video['colour_range']) && (
+                <MediaDetailItem label="Color">
+                  <div className="flex flex-col">
+                    {video['ColorSpace'] && (
+                      <span className="text-foreground/85 font-semibold">
+                        {video['ColorSpace']}
+                      </span>
+                    )}
+                    {video['ChromaSubsampling'] && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {video['ChromaSubsampling_String'] ||
+                          video['ChromaSubsampling']}
+                        {video['ChromaSubsampling_Position'] &&
+                          !(
+                            video['ChromaSubsampling_String'] ||
+                            video['ChromaSubsampling']
+                          )?.includes(video['ChromaSubsampling_Position']) &&
+                          ` (${video['ChromaSubsampling_Position']})`}
+                      </span>
+                    )}
+                    {video['colour_range'] && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {video['colour_range']}
+                      </span>
+                    )}
+                  </div>
+                </MediaDetailItem>
               )}
-              {video['MasteringDisplay_Luminance'] && (
-                <div>
-                  <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                    Mastering Display Luminance
-                  </span>
-                  <span className="text-foreground/85 font-semibold">
-                    {video['MasteringDisplay_Luminance']}
-                  </span>
-                </div>
+
+              {video['BitDepth'] && (
+                <MediaDetailItem
+                  label="Bit Depth"
+                  value={
+                    video['BitDepth_String'] || `${video['BitDepth']} bits`
+                  }
+                />
               )}
+
+              {(video['ScanType'] || video['Standard']) && (
+                <MediaDetailItem label="Scan Type">
+                  <div className="flex flex-col">
+                    {video['Standard'] && (
+                      <span className="text-foreground/85 font-semibold">
+                        {video['Standard']}
+                      </span>
+                    )}
+                    {video['ScanType'] && (
+                      <span
+                        className={
+                          video['Standard']
+                            ? 'text-muted-foreground text-xs font-normal'
+                            : 'text-foreground/85 font-semibold'
+                        }
+                      >
+                        {video['ScanType']}
+                      </span>
+                    )}
+                    {video['ScanType_StoreMethod'] && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {video['ScanType_StoreMethod']}
+                      </span>
+                    )}
+                    {video['ScanOrder'] && (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {video['ScanOrder'] === 'TFF'
+                          ? 'Top Field First'
+                          : video['ScanOrder'] === 'BFF'
+                            ? 'Bottom Field First'
+                            : video['ScanOrder']}
+                      </span>
+                    )}
+                  </div>
+                </MediaDetailItem>
+              )}
+
+              {(() => {
+                const libName = video['Encoded_Library_Name'];
+                const libVersion = video['Encoded_Library_Version'];
+                const fullLib = video['Encoded_Library'];
+
+                let displayMain = libName;
+                let displaySub = libVersion;
+
+                if (!displayMain && fullLib) {
+                  // Fallback: try to split "x264 - core 123"
+                  const match = fullLib.match(/^(.*?) - (.*)$/);
+                  if (match) {
+                    displayMain = match[1];
+                    displaySub = match[2];
+                  } else {
+                    displayMain = fullLib;
+                  }
+                }
+
+                if (!displayMain) return null;
+
+                return (
+                  <MediaDetailItem label="Encoded Library">
+                    <div className="flex flex-col">
+                      <span className="text-foreground/85 font-semibold">
+                        {displayMain}
+                      </span>
+                      {displaySub && (
+                        <span className="text-muted-foreground text-xs font-normal">
+                          {displaySub}
+                        </span>
+                      )}
+                    </div>
+                  </MediaDetailItem>
+                );
+              })()}
+
               {video['extra']?.['CodecConfigurationBox'] && (
-                <div>
-                  <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
-                    Codec Configuration Box
-                  </span>
-                  <span className="font-semibold">
-                    {video['extra']['CodecConfigurationBox']}
-                  </span>
-                </div>
+                <MediaDetailItem
+                  label="Codec Configuration Box"
+                  value={video['extra']['CodecConfigurationBox']}
+                />
               )}
             </div>
           );
