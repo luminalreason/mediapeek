@@ -15,7 +15,9 @@ export default defineConfig({
     cloudflare({ viteEnvironment: { name: 'ssr' } }),
     tailwindcss(),
     reactRouter(),
-    tsconfigPaths(),
+    tsconfigPaths({
+      projectDiscovery: 'lazy',
+    }),
   ],
   define: {
     __BUILD_NUMBER__: JSON.stringify(new Date().toISOString().split('T')[0]),

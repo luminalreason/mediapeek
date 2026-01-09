@@ -29,8 +29,8 @@ export function AccessibilitySection({
       <div className="grid gap-6 md:grid-cols-2">
         {/* CC */}
         {hasCC && (
-          <div className="flex items-start gap-4">
-            <MediaIcon name="cc" className="h-8 w-12 shrink-0 opacity-80" />
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:gap-4">
+            <MediaIcon name="cc" className="h-8 shrink-0 opacity-80" />
             <div className="space-y-1">
               <h4 className="text-foreground/85 text-sm font-medium">
                 Closed Captions
@@ -45,8 +45,8 @@ export function AccessibilitySection({
 
         {/* AD */}
         {hasAD && (
-          <div className="flex items-start gap-4">
-            <MediaIcon name="ad" className="h-8 w-12 shrink-0 opacity-80" />
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:gap-4">
+            <MediaIcon name="ad" className="h-8 shrink-0 opacity-80" />
             <div className="space-y-1">
               <h4 className="text-foreground/85 text-sm font-medium">
                 Audio Descriptions
@@ -62,8 +62,8 @@ export function AccessibilitySection({
 
         {/* SDH */}
         {hasSDH && (
-          <div className="flex items-start gap-4">
-            <MediaIcon name="sdh" className="h-8 w-12 shrink-0 opacity-80" />
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:gap-4">
+            <MediaIcon name="sdh" className="h-8 shrink-0 opacity-80" />
             <div className="space-y-1">
               <h4 className="text-foreground/85 text-sm font-medium">
                 SDH Subtitles

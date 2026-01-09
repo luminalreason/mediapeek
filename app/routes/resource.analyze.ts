@@ -16,7 +16,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     ? '1x00000000000000000000AA'
     : context.cloudflare.env.TURNSTILE_SECRET_KEY;
 
-  if (secretKey) {
+  if (
+    (context.cloudflare.env.ENABLE_TURNSTILE as string) === 'true' &&
+    secretKey
+  ) {
     if (!turnstileToken) {
       return Response.json(
         { error: 'Missing security token. Complete the verification.' },

@@ -2,7 +2,7 @@
 
 import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useActionState, useEffect, useRef } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { MediaSkeleton } from '~/components/media-skeleton';
@@ -83,6 +83,8 @@ export function MediaForm() {
   const turnstileInputRef = useRef<HTMLInputElement>(null);
   const turnstileWidgetRef = useRef<TurnstileWidgetHandle>(null);
 
+  const [isTurnstileVerified, setIsTurnstileVerified] = useState(false);
+
   const [state, formAction, isPending] = useActionState(
     async (_prevState: FormState, formData: FormData): Promise<FormState> => {
       const url = formData.get('url') as string;
@@ -96,7 +98,12 @@ export function MediaForm() {
         };
       }
 
-      if (!turnstileToken) {
+      const enableTurnstile =
+        typeof window !== 'undefined'
+          ? window.ENV?.ENABLE_TURNSTILE === 'true'
+          : false;
+
+      if (enableTurnstile && !turnstileToken) {
         return {
           results: null,
           error: 'Complete the verification.',
@@ -185,11 +192,9 @@ export function MediaForm() {
 
   return (
     <div className="flex min-h-[50vh] w-full flex-col items-center justify-center py-10">
-      <div className="relative w-full max-w-5xl sm:p-12">
+      <div className="relative w-full max-w-5xl sm:px-12 sm:pt-12 sm:pb-2">
         <div className="relative z-10 space-y-10">
           <div>
-            {/* Row 1: Title and Desktop Actions */}
-            {/* Header Group: Icon + Title + Actions */}
             {/* Header Group: Icon + Title + Actions */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
               {/* Icon */}
@@ -199,12 +204,12 @@ export function MediaForm() {
               >
                 <div className="relative h-16 w-16 drop-shadow-md">
                   <img
-                    src="/icons/icon-light.webp"
+                    src="/badges/icon-light.webp"
                     alt="MediaPeek Logo"
                     className="hidden h-full w-full object-contain dark:block"
                   />
                   <img
-                    src="/icons/icon-dark.webp"
+                    src="/badges/icon-dark.webp"
                     alt="MediaPeek Logo"
                     className="h-full w-full object-contain dark:hidden"
                   />
@@ -305,22 +310,32 @@ export function MediaForm() {
               </div>
             </div>
 
-            <div className="flex justify-center">
-              <TurnstileWidget
-                ref={turnstileWidgetRef}
-                onVerify={(token) => {
-                  if (turnstileInputRef.current) {
-                    turnstileInputRef.current.value = token;
-                  }
-                }}
-              />
-              <input
-                type="hidden"
-                name="cf-turnstile-response"
-                id="cf-turnstile-response"
-                ref={turnstileInputRef}
-              />
-            </div>
+            {/* Turnstile Container */}
+            {typeof window !== 'undefined' &&
+              window.ENV?.ENABLE_TURNSTILE === 'true' && (
+                <div
+                  className={`flex justify-center ${isTurnstileVerified ? 'hidden' : ''}`}
+                >
+                  <TurnstileWidget
+                    ref={turnstileWidgetRef}
+                    onVerify={(token) => {
+                      setIsTurnstileVerified(true);
+                      if (turnstileInputRef.current) {
+                        turnstileInputRef.current.value = token;
+                      }
+                    }}
+                    onExpire={() => {
+                      setIsTurnstileVerified(false);
+                    }}
+                  />
+                  <input
+                    type="hidden"
+                    name="cf-turnstile-response"
+                    id="cf-turnstile-response"
+                    ref={turnstileInputRef}
+                  />
+                </div>
+              )}
           </form>
 
           {!isPending && state.error && (
@@ -340,7 +355,7 @@ export function MediaForm() {
       {/* Result Card */}
       {state.results && !isPending && (
         <div className="w-full max-w-5xl px-0 sm:px-12">
-          <div className="animate-in fade-in slide-in-from-bottom-4 mt-8 duration-500">
+          <div className="animate-in fade-in slide-in-from-bottom-4 mt-2 duration-500">
             <MediaView data={state.results} url={state.url || ''} />{' '}
             {/* Default uses JSON for formatted view */}
           </div>

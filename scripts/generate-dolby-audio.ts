@@ -7,8 +7,8 @@ const __dirname = path.dirname(__filename);
 
 // Adjust paths relative to this script located in /scripts/
 const projectRoot = path.resolve(__dirname, '..');
-const inputPath = path.join(projectRoot, 'public/icons/dolby-vision.svg');
-const outputPath = path.join(projectRoot, 'public/icons/dolby-audio.svg');
+const inputPath = path.join(projectRoot, 'public/badges/dolby-vision.svg');
+const outputPath = path.join(projectRoot, 'public/badges/dolby-audio.svg');
 
 try {
   const svgContent = fs.readFileSync(inputPath, 'utf8');

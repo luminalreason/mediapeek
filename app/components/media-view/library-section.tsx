@@ -38,11 +38,11 @@ export function LibrarySection({
       </h3>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <div className="flex items-start gap-4">
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:gap-4">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 512 512"
-            className="h-10 w-10 shrink-0 opacity-80"
+            className="h-16 w-16 shrink-0 opacity-80"
           >
             <g transform="translate(0,-258)">
               <g

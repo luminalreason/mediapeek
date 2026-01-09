@@ -8,7 +8,7 @@
 
 MediaPeek provides detailed technical metadata for video, audio, image, and subtitle files directly in your browser. It processes URLs intelligently—fetching only the necessary data segments—so you don't need to download the whole file.
 
-![MediaPeek Demo](public/app.png)
+![MediaPeek Demo](resources/app.png)
 
 The tool operates on Cloudflare Workers using MediaInfo.js to perform analysis at the edge. Server-Side Request Forgery (SSRF) protection prevents access to unauthorized local or private network resources. Analysis results can be shared securely using the integrated PrivateBin feature.
 
@@ -61,6 +61,6 @@ You can use the following URLs to test the application:
 
 - **PrivateBin**: Enables secure sharing of results. ([License](https://github.com/PrivateBin/PrivateBin/blob/master/LICENSE.md))
 
-- **Apple TV+ Badges**: The format badges (Dolby, Immersive, 3D, HD, 4K, HDR, HDR10+) are sourced from [Apple TV+](https://tv.apple.com/). We selected these designs for their visual perfection and clarity, which align seamlessly with MediaPeek's aesthetic.
+- **Apple Services Badges**: The video format badges (Dolby, Immersive, 3D, HD, 4K, HDR, HDR10+) are sourced from [Apple TV](https://tv.apple.com/), while the audio badges (Lossless, Hi-Res Lossless, Apple Digital Master, Spatial Audio, AAC) are sourced from [Apple Music](https://music.apple.com/). We selected these designs for their visual perfection and clarity, which align seamlessly with MediaPeek's aesthetic.
 
 - **Cloudflare Workers**: Hosted on [Cloudflare Workers](https://workers.cloudflare.com/). We appreciate their generous free tier which makes this project possible.

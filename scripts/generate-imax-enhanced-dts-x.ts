@@ -8,10 +8,10 @@ const projectRoot = path.resolve(__dirname, '..');
 
 const inputPath = path.join(
   projectRoot,
-  'public/icons/sources/source_imax_dtsx.svg',
+  'public/badges/sources/source_imax_dtsx.svg',
 );
-const imaxPath = path.join(projectRoot, 'public/icons/imax-enhanced.svg');
-const dtsPath = path.join(projectRoot, 'public/icons/dts-x.svg');
+const imaxPath = path.join(projectRoot, 'public/badges/imax-enhanced.svg');
+const dtsPath = path.join(projectRoot, 'public/badges/dts-x.svg');
 
 try {
   const content = fs.readFileSync(inputPath, 'utf8');

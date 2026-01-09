@@ -15,6 +15,8 @@ export const MEDIA_CONSTANTS = {
     CC: 'cc',
     SDH: 'sdh',
     AD: 'ad',
+    LOSSLESS: 'lossless',
+    HI_RES_LOSSLESS: 'hi-res-lossless',
   },
   TOKENS: {
     ATMOS: 'atmos',

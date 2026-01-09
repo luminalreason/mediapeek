@@ -195,9 +195,78 @@ export const getMediaBadges = (
   }
 
   if (hasDTSX) icons.push(BADGES.DTS_X);
+  if (hasDTSX) icons.push(BADGES.DTS_X);
   else if (hasDTS) icons.push(BADGES.DTS);
 
-  // 3. Subtitle Tech (SDH & CC & AD)
+  // 3. Lossless Audio Detection (moved to header as requested)
+  // Check for the *best* quality track to determine the badge
+  let isHiResLossless = false;
+  let isLossless = false;
+
+  audioTracks.forEach((t) => {
+    // 1. Bit Depth (Field or Title Fallback)
+    let samplingRate = 0;
+    const rawRate = t['SamplingRate'];
+    if (typeof rawRate === 'number') {
+      samplingRate = rawRate;
+    } else if (typeof rawRate === 'string') {
+      const lowerRate = rawRate.toLowerCase();
+      const val = parseFloat(rawRate.replace(/[^0-9.]/g, ''));
+      if (lowerRate.includes('k')) samplingRate = val * 1000;
+      else samplingRate = val;
+    }
+
+    let bitDepth = 0;
+    const rawDepth = t['BitDepth'];
+    if (typeof rawDepth === 'number') {
+      bitDepth = rawDepth;
+    } else if (typeof rawDepth === 'string') {
+      bitDepth = parseInt(rawDepth.replace(/\D/g, ''), 10);
+    }
+
+    if (!bitDepth && t['Title']) {
+      const titleMatch = (t['Title'] as string).match(/(\d+)\s*bits?/i);
+      if (titleMatch) {
+        bitDepth = parseInt(titleMatch[1], 10);
+      }
+    }
+
+    // 2. Lossless Detection
+    const compressionMode =
+      typeof t['Compression_Mode'] === 'string'
+        ? t['Compression_Mode'].toLowerCase()
+        : '';
+    const isKnownLosslessFormat = [
+      'alac',
+      'flac',
+      'pcm',
+      'wave',
+      'wav',
+      'ape',
+      'wavpack',
+      'truehd',
+      'mlp',
+    ].includes((t['Format'] as string)?.toLowerCase() || '');
+
+    const isTrackLossless =
+      compressionMode === 'lossless' || bitDepth >= 16 || isKnownLosslessFormat;
+
+    if (isTrackLossless) {
+      if (bitDepth >= 24 && samplingRate > 44100) {
+        isHiResLossless = true;
+      } else {
+        isLossless = true;
+      }
+    }
+  });
+
+  if (isHiResLossless) {
+    icons.push(BADGES.HI_RES_LOSSLESS);
+  } else if (isLossless) {
+    icons.push(BADGES.LOSSLESS);
+  }
+
+  // 4. Subtitle Tech (SDH & CC & AD)
   const accessibleFeatures = getAccessibilityFeatures(
     audioTracks,
     textTracks,

@@ -25,14 +25,13 @@ declare global {
   interface Window {
     ENV: {
       TURNSTILE_SITE_KEY: string;
+      ENABLE_TURNSTILE: string;
     };
   }
 }
 
 export const links: Route.LinksFunction = () => [
-  { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
-
-  { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+  { rel: 'apple-touch-icon', href: '/ios-home-screen-icon.png' },
   { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
   {
     rel: 'preconnect',
@@ -53,6 +52,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     theme: getTheme(),
     env: {
       TURNSTILE_SITE_KEY: context.cloudflare.env.TURNSTILE_SITE_KEY,
+      ENABLE_TURNSTILE: context.cloudflare.env.ENABLE_TURNSTILE,
     },
   };
 }

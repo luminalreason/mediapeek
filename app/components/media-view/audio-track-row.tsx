@@ -38,24 +38,28 @@ export function AudioTrackRow({
   const commercial = cleanMetadataString(track['Format_Commercial_IfAny']);
   const info = track['Format_Info'];
   const rawFormat = cleanMetadataString(track['Format']);
+  const codecInfo = track['CodecID_Info'];
 
-  const format = commercial || info || rawFormat;
+  // Prioritize CodecID_Info if available
+  const format = codecInfo || commercial || info || rawFormat;
   const subFormat = commercial && info ? info : undefined;
 
-  const renderBadges = () => (
-    <>
-      {track['Default'] === 'Yes' && (
-        <Badge className="border border-emerald-500/20 bg-emerald-500/15 text-[10px] text-emerald-700 hover:bg-emerald-500/25 dark:bg-emerald-500/20 dark:text-emerald-400">
-          Default
-        </Badge>
-      )}
-      {track['Forced'] === 'Yes' && (
-        <Badge className="border border-amber-500/20 bg-amber-500/15 text-[10px] text-amber-700 hover:bg-amber-500/25 dark:bg-amber-500/20 dark:text-amber-400">
-          Forced
-        </Badge>
-      )}
-    </>
-  );
+  const renderBadges = () => {
+    return (
+      <>
+        {track['Default'] === 'Yes' && (
+          <Badge className="border border-emerald-500/20 bg-emerald-500/15 text-[10px] text-emerald-700 hover:bg-emerald-500/25 dark:bg-emerald-500/20 dark:text-emerald-400">
+            Default
+          </Badge>
+        )}
+        {track['Forced'] === 'Yes' && (
+          <Badge className="border border-amber-500/20 bg-amber-500/15 text-[10px] text-amber-700 hover:bg-amber-500/25 dark:bg-amber-500/20 dark:text-amber-400">
+            Forced
+          </Badge>
+        )}
+      </>
+    );
+  };
 
   const techDetails = [
     {
@@ -63,6 +67,10 @@ export function AudioTrackRow({
       value: (track['Format_String'] ||
         track['Format_Commercial'] ||
         track['Format']) as string,
+    },
+    {
+      label: 'Format Mode',
+      value: track['Format_Settings_Mode'],
     },
     {
       label: 'Bitrate',
@@ -132,10 +140,22 @@ export function AudioTrackRow({
   ].filter((item) => item.value);
 
   return (
-    <div className="bg-muted/10 border-muted/20 hover:bg-muted/20 flex items-start gap-4 rounded-lg border p-4 transition-colors">
-      {/* Track Number Column */}
+    <div className="bg-muted/10 border-muted/20 hover:bg-muted/20 flex flex-col items-start gap-2 rounded-lg border p-4 transition-colors sm:flex-row sm:gap-4">
+      {/* Mobile Header: Track Number + Badges */}
+      <div className="flex w-full items-start justify-between sm:hidden">
+        {showTrackNumber && (
+          <span className="text-muted-foreground pt-0.5 text-xs font-medium">
+            {trackNumber}
+          </span>
+        )}
+        <div className="flex flex-wrap justify-end gap-1.5 align-top">
+          {renderBadges()}
+        </div>
+      </div>
+
+      {/* Desktop Track Number Column */}
       {showTrackNumber && (
-        <span className="text-muted-foreground pt-0.5 text-xs font-medium">
+        <span className="text-muted-foreground hidden pt-0.5 text-xs font-medium sm:block">
           {trackNumber}
         </span>
       )}
@@ -152,7 +172,7 @@ export function AudioTrackRow({
                 ({channels})
               </span>
             </div>
-            <div className="flex flex-wrap justify-end gap-1.5 align-top">
+            <div className="hidden flex-wrap justify-end gap-1.5 align-top sm:flex">
               {renderBadges()}
             </div>
           </div>
@@ -167,11 +187,6 @@ export function AudioTrackRow({
                   </span>
                 )}
               </span>
-              {track['Format_Settings_Mode'] && (
-                <span className="text-foreground/85 text-xs font-medium">
-                  {track['Format_Settings_Mode']}
-                </span>
-              )}
               {track['ChannelLayout'] && (
                 <span className="text-muted-foreground font-mono text-xs">
                   {track['ChannelLayout']}
