@@ -11,6 +11,7 @@ export interface FetchDiagnostics {
   isGoogleDrive: boolean;
   resolvedFilename: string;
   responseStatus: number;
+  probeMethod: string;
 }
 
 export interface MediaFetchResult {
@@ -32,14 +33,27 @@ export async function fetchMediaChunk(
 
   validateUrl(targetUrl);
 
-  // 1. HEAD Request
+  // 1. Initial Request (HEAD with fallback to GET)
   const tHead = performance.now();
-  const headRes = await fetch(targetUrl, {
+  let probeMethod = 'HEAD';
+  let headRes = await fetch(targetUrl, {
     method: 'HEAD',
     headers: getEmulationHeaders(),
     redirect: 'follow',
   });
+
+  // If HEAD is not allowed (405), fallback to a GET request for the first byte
+  if (headRes.status === 405) {
+    probeMethod = 'GET';
+    headRes = await fetch(targetUrl, {
+      method: 'GET',
+      headers: getEmulationHeaders('bytes=0-0'),
+      redirect: 'follow',
+    });
+  }
+
   diagnostics.headRequestDurationMs = Math.round(performance.now() - tHead);
+  diagnostics.probeMethod = probeMethod;
 
   // Check for HTML content (indicates a webpage, not a direct file link)
   const contentType = headRes.headers.get('content-type');
@@ -50,7 +64,9 @@ export async function fetchMediaChunk(
         'Google Drive file is rate-limited. Try again in 24 hours.',
       );
     }
-    // Generic HTML response
+
+    // If we have a 405, it might be that the server returned an HTML error page for HEAD,
+    // but code above should have handled the fallback. If we are here, even the fallback/original returned HTML.
     throw new Error(
       'URL links to a webpage, not a media file. Provide a direct link.',
     );
@@ -68,7 +84,21 @@ export async function fetchMediaChunk(
     }
   }
 
-  const fileSize = parseInt(headRes.headers.get('content-length') || '0', 10);
+  // Determine file size (support Content-Range for partial content responses)
+  let fileSize = 0;
+  const contentRange = headRes.headers.get('content-range');
+  if (contentRange) {
+    const match = contentRange.match(/\/(\d+)$/);
+    if (match) {
+      fileSize = parseInt(match[1], 10);
+    }
+  }
+
+  // Fallback to Content-Length if no Content-Range
+  if (!fileSize) {
+    fileSize = parseInt(headRes.headers.get('content-length') || '0', 10);
+  }
+
   if (!fileSize) throw new Error('Could not determine file size');
 
   // 2. Determine Filename
