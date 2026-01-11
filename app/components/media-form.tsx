@@ -218,8 +218,15 @@ export function MediaForm() {
     initialState,
   );
 
-  const { clipboardUrl, ignoreClipboard, isPermissionGranted } =
-    useClipboardSuggestion(state.url);
+  const {
+    clipboardUrl,
+    ignoreClipboard,
+    isPermissionGranted,
+    checkClipboard,
+    // Used to feature-detect Chromium (supports Permission API) vs Safari (does not).
+    // In Safari, reading on focus triggers an annoying system "Paste" bubble, so we skip it there.
+    isClipboardApiSupported,
+  } = useClipboardSuggestion(state.url);
 
   // Reset Turnstile when state changes (meaning submission completed)
   useEffect(() => {
@@ -344,6 +351,12 @@ export function MediaForm() {
                     key={state.url}
                     defaultValue={state.url || ''}
                     required
+                    onFocus={() => {
+                      // Lazy check for clipboard (Chromium only).
+                      if (isClipboardApiSupported) {
+                        checkClipboard();
+                      }
+                    }}
                   />
                   {!isPermissionGranted && (
                     <PasteButton

@@ -27,13 +27,13 @@ export function useClipboardSuggestion(currentUrl: string | undefined) {
     }
   }, [currentUrl, ignoredUrl]);
 
-  /*
-   * State to track if the browser has granted persistent permission (Chrome).
-   * If true, we hide the manual 'Paste' button in the UI.
+  /**
+   * Track if browser supports `clipboard-read` permission query (Chromium).
+   * Used to enable lazy-read on focus only for supported browsers to avoid Safari's "Paste" bubble.
    */
   const [isPermissionGranted, setIsPermissionGranted] = useState(false);
+  const [isClipboardApiSupported, setIsClipboardApiSupported] = useState(false);
 
-  // Auto-check on focus for browsers that support strict permission queries (e.g. Chrome).
   useEffect(() => {
     const attemptAutoRead = async () => {
       try {
@@ -46,13 +46,14 @@ export function useClipboardSuggestion(currentUrl: string | undefined) {
             name: 'clipboard-read' as PermissionName,
           });
 
+          setIsClipboardApiSupported(true);
+
           if (result.state === 'granted') {
             setIsPermissionGranted(true);
             checkClipboard();
           } else if (result.state === 'prompt') {
-            // Initially false, but we try to read. If user allows, next check might be granted.
+            // Do not read on load. Wait for user interaction (focus).
             setIsPermissionGranted(false);
-            checkClipboard();
           }
 
           // Listen for change (e.g. user revoked/granted elsewhere)
@@ -94,5 +95,6 @@ export function useClipboardSuggestion(currentUrl: string | undefined) {
     ignoreClipboard,
     clearClipboard,
     isPermissionGranted,
+    isClipboardApiSupported,
   };
 }
