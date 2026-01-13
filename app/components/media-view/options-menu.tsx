@@ -39,6 +39,7 @@ import { useMediaQuery } from '~/hooks/use-media-query';
 interface OptionsMenuProps {
   data: Record<string, string>;
   url: string;
+  filename: string;
   isTextView: boolean;
   setIsTextView: (val: boolean) => void;
   showOriginalTitles: boolean;
@@ -59,6 +60,7 @@ const formats = [
 export function OptionsMenu({
   data,
   url,
+  filename,
   isTextView,
   setIsTextView,
   showOriginalTitles,
@@ -82,9 +84,14 @@ export function OptionsMenu({
       const shareUrl = await getShareUrl(format, label);
       if (shareUrl) {
         setShareData({ url: shareUrl, label });
-        setShareDialogOpen(true);
-        onShareSuccess?.(shareUrl);
-        setOpen(false); // Close the main menu
+        setOpen(false); // Close the main menu first
+
+        // Wait for drawer close animation to finish before opening dialog
+        // This prevents layout thrashing and jitter on mobile
+        setTimeout(() => {
+          setShareDialogOpen(true);
+          onShareSuccess?.(shareUrl);
+        }, 300);
       }
     } catch {
       // Error is handled in getShareUrl (toast)
@@ -103,26 +110,32 @@ export function OptionsMenu({
       <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="items-start text-left">
-            <img
-              src="/privatebin.svg"
-              alt="PrivateBin Logo"
-              className="mb-4 h-10 w-auto"
-            />
-            <DialogTitle>Share Securely</DialogTitle>
+            <DialogTitle>Link Created</DialogTitle>
             <DialogDescription>
-              {shareData?.label} metadata has been encrypted and uploaded to
-              PrivateBin. Use the link below to share it.
+              The <strong>{shareData?.label}</strong> metadata for this file has
+              been encrypted:
             </DialogDescription>
+            <div className="mt-1.5 mb-2 min-w-0 px-1 text-sm">
+              <span className="text-foreground line-clamp-3 font-medium break-all">
+                {filename}
+              </span>
+            </div>
           </DialogHeader>
-          <div className="flex items-center space-x-2">
-            <div className="grid flex-1 gap-2">
+          <div className="flex w-full items-center space-x-2">
+            <div className="grid w-full min-w-0 flex-1 gap-2">
               <Label htmlFor="link" className="sr-only">
                 Link
               </Label>
-              <Input id="link" defaultValue={shareData?.url} readOnly />
+              <Input
+                id="link"
+                defaultValue={shareData?.url}
+                readOnly
+                className="w-full"
+                tabIndex={-1}
+              />
             </div>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-start">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-start">
             <Button
               type="submit"
               size="sm"
@@ -147,29 +160,6 @@ export function OptionsMenu({
                 <span>Open</span>
               </a>
             </Button>
-          </div>
-          <div className="text-secondary-foreground/60 text-[10px]">
-            <p>
-              PrivateBin logo by{' '}
-              <a
-                href="https://github.com/rugk"
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-primary underline"
-              >
-                rugk
-              </a>{' '}
-              is licensed under{' '}
-              <a
-                href="https://creativecommons.org/licenses/by/4.0/"
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-primary underline"
-              >
-                CC BY 4.0
-              </a>
-              .
-            </p>
           </div>
         </DialogContent>
       </Dialog>

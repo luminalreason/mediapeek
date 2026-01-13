@@ -92,6 +92,7 @@ export function MediaHeader({
               <OptionsMenu
                 data={rawData}
                 url={url}
+                filename={displayFilename}
                 isTextView={isTextView}
                 setIsTextView={setIsTextView}
                 showOriginalTitles={showOriginalTitles}
