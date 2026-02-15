@@ -4,8 +4,12 @@
   "main": "src/index.ts",
   "compatibility_date": "2024-04-03",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
   "dev": {
-    "port": 8788,
+    "port": 0,
+  },
+  "vars": {
+    "ANALYZE_CPU_BUDGET_MS": "25000",
   },
   "upload_source_maps": true,
   "observability": {

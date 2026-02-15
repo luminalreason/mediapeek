@@ -13,6 +13,13 @@ import {
   AlertTitle,
 } from '@mediapeek/ui/components/alert';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@mediapeek/ui/components/dialog';
+import {
   InputGroup,
   InputGroupButton,
   InputGroupInput,
@@ -102,6 +109,11 @@ interface AnalyzeResponse {
   error?: string | ErrorShape;
 }
 
+interface AnalyzeRequestError extends Error {
+  status?: number;
+  retryable?: boolean;
+}
+
 const initialState: FormState = {
   results: null,
   error: null,
@@ -109,16 +121,28 @@ const initialState: FormState = {
   duration: null,
 };
 
+const ANALYZE_REQUEST_TIMEOUT_MS = 90_000;
+const MAX_ANALYZE_RETRIES = 2;
+const RETRY_BACKOFF_MS = 1_500;
+const SLOW_STATUS_DELAY_MS = 5_000;
+const SLOW_STATUS_MESSAGE = 'Source server is taking longer than usual. Still trying...';
+const RETRYABLE_HTTP_STATUSES = new Set([502, 503, 504]);
+
 export function MediaForm() {
   const { triggerCreativeSuccess, triggerError, triggerSuccess } =
     useHapticFeedback();
   const turnstileInputRef = useRef<HTMLInputElement>(null);
   const turnstileWidgetRef = useRef<TurnstileWidgetHandle>(null);
+  const pendingFormDataRef = useRef<FormData | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [isTurnstileVerified, setIsTurnstileVerified] = useState(false);
+  const [isTurnstileDialogOpen, setIsTurnstileDialogOpen] = useState(false);
   const [state, setState] = useState<FormState>(initialState);
   const [isPending, setIsPending] = useState(false);
+  const [pendingStatusMessage, setPendingStatusMessage] = useState<
+    string | null
+  >(null);
 
   const {
     clipboardUrl,
@@ -130,15 +154,19 @@ export function MediaForm() {
     isClipboardApiSupported,
   } = useClipboardSuggestion(state.url);
 
-  // Reset Turnstile when state changes (meaning submission completed)
   useEffect(() => {
-    if (state.status === 'Done' || state.status === 'Failed') {
-      turnstileWidgetRef.current?.reset();
-      if (turnstileInputRef.current) {
-        turnstileInputRef.current.value = '';
-      }
+    if (!isPending || pendingStatusMessage) {
+      return;
     }
-  }, [state.status]);
+
+    const timeoutId = setTimeout(() => {
+      setPendingStatusMessage((current) => current ?? SLOW_STATUS_MESSAGE);
+    }, SLOW_STATUS_DELAY_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isPending, pendingStatusMessage]);
 
   const submitAnalysis = async (formData: FormData) => {
     const url = formData.get('url') as string;
@@ -171,77 +199,173 @@ export function MediaForm() {
       return;
     }
 
+    const createAnalyzeError = (
+      message: string,
+      status?: number,
+      retryable = false,
+    ) => {
+      const error = new Error(message) as AnalyzeRequestError;
+      error.status = status;
+      error.retryable = retryable;
+      return error;
+    };
+
+    const isRetryableRequestError = (err: unknown) => {
+      if (!(err instanceof Error)) return false;
+      if ((err as AnalyzeRequestError).retryable) return true;
+      if (err.name === 'AbortError') return true;
+      return /timed out|timeout|retry|upstream|unavailable/i.test(err.message);
+    };
+
+    const wait = (ms: number) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      });
+
     setIsPending(true);
-    setState((prev) => ({ ...prev, error: null }));
+    setPendingStatusMessage(null);
+    setState((prev) => ({ ...prev, error: null, status: 'Loading' }));
     const startTime = performance.now();
 
     try {
-      const response = await fetch(
-        `/resource/analyze?url=${encodeURIComponent(url)}&format=object`,
-        {
-          headers: {
-            'CF-Turnstile-Response': turnstileToken,
-          },
-        },
-      );
+      let lastError: unknown = null;
 
-      const contentType = response.headers.get('content-type');
-      let data: AnalyzeResponse = {};
+      for (let attempt = 0; attempt <= MAX_ANALYZE_RETRIES; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, ANALYZE_REQUEST_TIMEOUT_MS);
 
-      if (contentType?.includes('application/json')) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        if (!response.ok) {
-          throw new Error(
-            `Server Error (${String(response.status)}): The analysis server failed or timed out.`,
+        try {
+          const response = await fetch(
+            `/resource/analyze?url=${encodeURIComponent(url)}&format=object`,
+            {
+              headers: {
+                'CF-Turnstile-Response': turnstileToken,
+              },
+              signal: controller.signal,
+            },
           );
+
+          const contentType = response.headers.get('content-type');
+          let data: AnalyzeResponse = {};
+
+          if (contentType?.includes('application/json')) {
+            data = await response.json();
+          } else {
+            const text = await response.text();
+            if (!response.ok) {
+              throw createAnalyzeError(
+                `Server Error (${String(response.status)}): The analysis server failed or timed out.`,
+                response.status,
+                RETRYABLE_HTTP_STATUSES.has(response.status),
+              );
+            }
+            console.error('Unexpected non-JSON response:', text);
+            throw createAnalyzeError('Received invalid response from server.');
+          }
+
+          const errorMessage =
+            typeof data.error === 'string' ? data.error : data.error?.message;
+          if (!response.ok || data.success === false || errorMessage) {
+            throw createAnalyzeError(
+              errorMessage ??
+                'Unable to analyze URL. Verify the link is correct.',
+              response.status,
+              RETRYABLE_HTTP_STATUSES.has(response.status),
+            );
+          }
+
+          const resultData = data.results ?? null;
+          const endTime = performance.now();
+          triggerCreativeSuccess();
+
+          setState({
+            results: resultData,
+            error: null,
+            status: 'Done',
+            url,
+            duration: endTime - startTime,
+          });
+          setPendingStatusMessage(null);
+          return;
+        } catch (err) {
+          lastError = err;
+          if (attempt < MAX_ANALYZE_RETRIES && isRetryableRequestError(err)) {
+            setPendingStatusMessage(
+              `Server is slow or unavailable. Retrying (${String(attempt + 1)}/${String(MAX_ANALYZE_RETRIES)})...`,
+            );
+            await wait(RETRY_BACKOFF_MS * (attempt + 1));
+            continue;
+          }
+          break;
+        } finally {
+          clearTimeout(timeoutId);
         }
-        console.error('Unexpected non-JSON response:', text);
-        throw new Error('Received invalid response from server.');
       }
 
-      const errorMessage =
-        typeof data.error === 'string' ? data.error : data.error?.message;
-      if (!response.ok || data.success === false || errorMessage) {
-        throw new Error(
-          errorMessage ?? 'Unable to analyze URL. Verify the link is correct.',
-        );
-      }
-
-      const resultData = data.results ?? null;
-      const endTime = performance.now();
-      triggerCreativeSuccess();
-
-      setState({
-        results: resultData,
-        error: null,
-        status: 'Done',
-        url,
-        duration: endTime - startTime,
-      });
-    } catch (err) {
       triggerError();
+      const errorMessage =
+        lastError instanceof Error && lastError.name === 'AbortError'
+          ? 'Analysis timed out. Please retry with a smaller or simpler source URL.'
+          : lastError instanceof Error
+            ? lastError.message
+            : 'Analysis Failed';
       setState({
         results: null,
-        error: err instanceof Error ? err.message : 'Analysis Failed',
+        error: errorMessage,
         status: 'Failed',
         url,
       });
     } finally {
       setIsPending(false);
+      setPendingStatusMessage(null);
+      pendingFormDataRef.current = null;
+      setIsTurnstileVerified(false);
+      turnstileWidgetRef.current?.reset();
+      if (turnstileInputRef.current) {
+        turnstileInputRef.current.value = '';
+      }
     }
   };
 
   const onSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+
+    const enableTurnstile =
+      typeof window !== 'undefined'
+        ? (
+            window as unknown as {
+              ENV?: { ENABLE_TURNSTILE?: string };
+            }
+          ).ENV?.ENABLE_TURNSTILE === 'true'
+        : false;
+
+    const turnstileToken =
+      (formData.get('cf-turnstile-response') as string | null)?.trim() ?? '';
+    if (enableTurnstile && !turnstileToken) {
+      pendingFormDataRef.current = formData;
+      setState((prev) => ({ ...prev, error: null }));
+      setIsTurnstileDialogOpen(true);
+      return;
+    }
+
     void submitAnalysis(formData);
   };
 
+  const enableTurnstile =
+    typeof window !== 'undefined'
+      ? (
+          window as unknown as {
+            ENV?: { ENABLE_TURNSTILE?: string };
+          }
+        ).ENV?.ENABLE_TURNSTILE === 'true'
+      : false;
+
   return (
-    <div className="flex min-h-[50vh] w-full flex-col items-center justify-center py-8">
-      <div className="relative w-full max-w-5xl sm:px-12 sm:py-2">
+    <div className="flex min-h-[50vh] w-full flex-col justify-center py-8">
+      <div className="relative w-full sm:py-2">
         <div className="relative z-10 space-y-10">
           <form onSubmit={onSubmit} className="relative space-y-8" noValidate>
             {/* Clipboard Suggestion Pill */}
@@ -328,37 +452,75 @@ export function MediaForm() {
                 </InputGroup>
               </div>
             </div>
+            <input
+              type="hidden"
+              name="cf-turnstile-response"
+              id="cf-turnstile-response"
+              ref={turnstileInputRef}
+            />
 
-            {/* Turnstile Container */}
-            {typeof window !== 'undefined' &&
-              (
-                window as unknown as {
-                  ENV?: { ENABLE_TURNSTILE?: string };
-                }
-              ).ENV?.ENABLE_TURNSTILE === 'true' && (
-                <div
-                  className={`flex justify-center ${isTurnstileVerified ? 'hidden' : ''}`}
-                >
-                  <TurnstileWidget
-                    ref={turnstileWidgetRef}
-                    onVerify={(token) => {
-                      setIsTurnstileVerified(true);
-                      if (turnstileInputRef.current) {
-                        turnstileInputRef.current.value = token;
-                      }
-                    }}
-                    onExpire={() => {
-                      setIsTurnstileVerified(false);
-                    }}
-                  />
-                  <input
-                    type="hidden"
-                    name="cf-turnstile-response"
-                    id="cf-turnstile-response"
-                    ref={turnstileInputRef}
-                  />
-                </div>
-              )}
+            {enableTurnstile && (
+              <Dialog
+                open={isTurnstileDialogOpen}
+                onOpenChange={(open) => {
+                  setIsTurnstileDialogOpen(open);
+                  if (!open && pendingFormDataRef.current && !isPending) {
+                    pendingFormDataRef.current = null;
+                    if (!isTurnstileVerified) {
+                      setState((prev) => ({
+                        ...prev,
+                        error: 'Verification was cancelled.',
+                      }));
+                    }
+                  }
+                }}
+              >
+                <DialogContent showCloseButton={!isPending}>
+                  <DialogHeader>
+                    <DialogTitle>Verify Before Analysis</DialogTitle>
+                    <DialogDescription>
+                      Complete the Turnstile check to run this analysis request.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex min-h-[65px] justify-center">
+                    <TurnstileWidget
+                      ref={turnstileWidgetRef}
+                      onVerify={(token) => {
+                        setIsTurnstileVerified(true);
+                        if (turnstileInputRef.current) {
+                          turnstileInputRef.current.value = token;
+                        }
+
+                        const pendingFormData = pendingFormDataRef.current;
+                        if (!pendingFormData) return;
+
+                        pendingFormData.set('cf-turnstile-response', token);
+                        pendingFormDataRef.current = null;
+                        setIsTurnstileDialogOpen(false);
+                        void submitAnalysis(pendingFormData);
+                      }}
+                      onError={() => {
+                        setIsTurnstileVerified(false);
+                        if (turnstileInputRef.current) {
+                          turnstileInputRef.current.value = '';
+                        }
+                        setState((prev) => ({
+                          ...prev,
+                          error:
+                            'Security check failed. Please refresh and try again.',
+                        }));
+                      }}
+                      onExpire={() => {
+                        setIsTurnstileVerified(false);
+                        if (turnstileInputRef.current) {
+                          turnstileInputRef.current.value = '';
+                        }
+                      }}
+                    />
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </form>
 
           {!isPending && state.error && (
@@ -372,12 +534,20 @@ export function MediaForm() {
           )}
         </div>
       </div>
+      {isPending && pendingStatusMessage && (
+        <div className="mb-4 w-full">
+          <Alert>
+            <AlertTitle>Processing</AlertTitle>
+            <AlertDescription>{pendingStatusMessage}</AlertDescription>
+          </Alert>
+        </div>
+      )}
       {/* Loading Skeleton */}
       {isPending && <MediaSkeleton />}
 
       {/* Result Card */}
       {state.results && !isPending && (
-        <div className="w-full max-w-5xl px-0 sm:px-12">
+        <div className="w-full">
           <div className="animate-in fade-in slide-in-from-bottom-4 ease-smooth mt-2 duration-300">
             <MediaView data={state.results} url={state.url ?? ''} />{' '}
             {/* Default uses JSON for formatted view */}

@@ -2,11 +2,17 @@
 /// <reference types="@react-router/node" />
 
 interface Env {
+  ANALYZER?: Fetcher;
   ANALYZE_API_KEY?: string;
-  ANALYZE_API_BASE_URL?: string;
+  ANALYZE_PUBLIC_API_KEY?: string;
   ANALYZE_RATE_LIMIT_PER_MINUTE?: string;
+  ANALYZER_REQUEST_TIMEOUT_MS?: string;
+  ANALYZE_RATE_LIMITER?: {
+    limit: (options: { key: string }) => Promise<{ success: boolean }>;
+  };
   TURNSTILE_SECRET_KEY: string;
   TURNSTILE_SITE_KEY: string;
+  ENABLE_TURNSTILE?: string;
   SESSION_SECRET: string;
 }
 

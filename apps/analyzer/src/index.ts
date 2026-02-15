@@ -3,14 +3,50 @@ import { AnalyzeErrorCode } from '@mediapeek/shared/analyze-contract';
 import { analyzeSchema } from '@mediapeek/shared/schemas';
 import { Hono } from 'hono';
 
+import { log, type LogContext, requestStorage } from './lib/logger.server';
 import { fetchMediaChunk } from './services/media-fetch.server';
-import { analyzeMediaBuffer } from './services/mediainfo.server';
-import { CpuBudgetExceededError } from './services/mediainfo.server';
+import {
+  analyzeMediaBuffer,
+  CpuBudgetExceededError,
+  DEFAULT_ANALYSIS_CPU_BUDGET_MS,
+} from './services/mediainfo.server';
 
 type Bindings = {
-  // Service Bindings are secure by default, but we can verify a shared secret if needed.
-  // Generally not required if "private: true" is set in wrangler.jsonc
   ANALYZE_API_KEY?: string;
+  ANALYZE_CPU_BUDGET_MS?: string;
+};
+
+const MIN_ANALYSIS_CPU_BUDGET_MS = 5_000;
+const MAX_ANALYSIS_CPU_BUDGET_MS = 29_000;
+
+const getRequestId = (request: Request) =>
+  request.headers.get('cf-ray') ?? crypto.randomUUID();
+
+const getApiKeyFromRequest = (request: Request): string | null => {
+  const xApiKey = request.headers.get('x-api-key');
+  if (xApiKey) return xApiKey;
+
+  const authorization = request.headers.get('authorization');
+  if (!authorization?.startsWith('Bearer ')) return null;
+  return authorization.slice('Bearer '.length).trim() || null;
+};
+
+const resolveCpuBudgetMs = (rawValue?: string) => {
+  const parsed = Number.parseInt(rawValue ?? '', 10);
+  if (Number.isNaN(parsed)) {
+    return DEFAULT_ANALYSIS_CPU_BUDGET_MS;
+  }
+
+  return Math.min(
+    MAX_ANALYSIS_CPU_BUDGET_MS,
+    Math.max(MIN_ANALYSIS_CPU_BUDGET_MS, parsed),
+  );
+};
+
+const isCpuLimitError = (error: unknown) => {
+  if (error instanceof CpuBudgetExceededError) return true;
+  if (!(error instanceof Error)) return false;
+  return /cpu budget exceeded/i.test(error.message);
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -23,69 +59,171 @@ const routes = app.post(
   '/analyze',
   sValidator('json', analyzeSchema),
   async (c) => {
-    const { url, format } = c.req.valid('json');
+    const startTime = performance.now();
+    const requestId = getRequestId(c.req.raw);
+    const initialContext: LogContext = {
+      requestId,
+      httpRequest: {
+        requestMethod: c.req.method,
+        requestUrl: c.req.path,
+        status: 200,
+        remoteIp: c.req.header('CF-Connecting-IP') ?? undefined,
+        userAgent: c.req.header('User-Agent') ?? undefined,
+        latency: '0s',
+      },
+      customContext: {},
+    };
 
-    try {
-      // 1. Fetch
-      const {
-        buffer,
-        fileSize,
-        filename,
-        diagnostics: fetchDiag,
-      } = await fetchMediaChunk(url);
+    return requestStorage.run(initialContext, async () => {
+      let status = 200;
+      let severity: 'INFO' | 'WARNING' | 'ERROR' = 'INFO';
+      const customContext =
+        initialContext.customContext ?? (initialContext.customContext = {});
 
-      // 2. Analyze (with CPU budget check)
-      const { results, diagnostics: analysisDiag } = await analyzeMediaBuffer(
-        buffer,
-        fileSize,
-        filename,
-        format,
-      );
+      const cf = (c.req.raw as Request & { cf?: Record<string, unknown> }).cf;
+      if (cf) {
+        customContext.cloudflare = {
+          colo: cf.colo,
+          country: cf.country,
+        };
+      }
 
-      return c.json({
-        success: true as const,
-        requestId: c.req.header('cf-ray') || crypto.randomUUID(),
-        fileSize,
-        results,
-        diagnostics: {
-          fetch: fetchDiag,
-          analysis: analysisDiag,
-        },
-      });
-    } catch (error) {
-      console.error('Analysis Failed:', error);
-      let status = 500;
-      let code: AnalyzeErrorCode = 'INTERNAL_ERROR';
-      let message = 'Internal Server Error';
-      let retryable = false;
+      const expectedApiKey = c.env.ANALYZE_API_KEY?.trim();
+      if (expectedApiKey) {
+        const providedApiKey = getApiKeyFromRequest(c.req.raw);
+        if (!providedApiKey) {
+          customContext.errorClass = 'ANALYZER_AUTH_REQUIRED';
+          return c.json(
+            {
+              success: false as const,
+              requestId,
+              error: {
+                code: 'AUTH_REQUIRED' as AnalyzeErrorCode,
+                message: 'Missing analyzer API key.',
+                retryable: false,
+              },
+            },
+            401,
+          );
+        }
 
-      if (error instanceof CpuBudgetExceededError) {
-        status = 503;
-        code = 'CPU_BUDGET_EXCEEDED';
-        message = 'Analysis too heavy for this worker tier.';
-        retryable = true;
-      } else if (error instanceof Error) {
-        message = error.message;
-        if (message.includes('Fetch stream')) {
-          code = 'UPSTREAM_FETCH_FAILED';
-          status = 502;
-          retryable = true;
+        if (providedApiKey !== expectedApiKey) {
+          customContext.errorClass = 'ANALYZER_AUTH_INVALID';
+          return c.json(
+            {
+              success: false as const,
+              requestId,
+              error: {
+                code: 'AUTH_INVALID' as AnalyzeErrorCode,
+                message: 'Invalid analyzer API key.',
+                retryable: false,
+              },
+            },
+            403,
+          );
         }
       }
 
-      return c.json(
-        {
-          success: false as const,
-          requestId: c.req.header('cf-ray') || crypto.randomUUID(),
-          error: {
-            code,
-            message,
-            retryable,
+      const cpuBudgetMs = resolveCpuBudgetMs(c.env.ANALYZE_CPU_BUDGET_MS);
+      customContext.cpuBudgetMs = cpuBudgetMs;
+
+      const { url, format } = c.req.valid('json');
+      customContext.targetUrl = url;
+
+      try {
+        // 1. Fetch
+        const {
+          buffer,
+          fileSize,
+          filename,
+          diagnostics: fetchDiag,
+        } = await fetchMediaChunk(url);
+        customContext.fetch = fetchDiag;
+        customContext.fileSize = fileSize;
+        customContext.filename = fetchDiag.resolvedFilename ?? filename;
+
+        // 2. Analyze (with explicit CPU budget check)
+        const { results, diagnostics: analysisDiag } = await analyzeMediaBuffer(
+          buffer,
+          fileSize,
+          filename,
+          format,
+          cpuBudgetMs,
+        );
+
+        customContext.analysis = analysisDiag;
+        customContext.cpuBudgetRemainingMs = Math.max(
+          0,
+          cpuBudgetMs - analysisDiag.totalAnalysisTimeMs,
+        );
+
+        return c.json({
+          success: true as const,
+          requestId,
+          fileSize,
+          results,
+          diagnostics: {
+            fetch: fetchDiag,
+            analysis: analysisDiag,
           },
-        },
-        status as 500,
-      );
-    }
+        });
+      } catch (error) {
+        status = 500;
+        severity = 'ERROR';
+
+        let code: AnalyzeErrorCode = 'INTERNAL_ERROR';
+        let message = 'Internal Server Error';
+        let retryable = false;
+
+        if (isCpuLimitError(error)) {
+          status = 503;
+          code = 'CPU_BUDGET_EXCEEDED';
+          message =
+            'Analysis exceeded the configured CPU budget. Retry with a smaller or simpler source.';
+          retryable = true;
+          customContext.errorClass = 'CPU_LIMIT_EXCEEDED';
+        } else if (error instanceof Error) {
+          message = error.message;
+          if (/fetch stream|unable to access file/i.test(message)) {
+            status = 502;
+            code = 'UPSTREAM_FETCH_FAILED';
+            retryable = true;
+            customContext.errorClass = 'UPSTREAM_FETCH_FAILED';
+          } else {
+            customContext.errorClass = 'ANALYZER_INTERNAL_ERROR';
+          }
+        }
+
+        customContext.error = {
+          code,
+          message,
+          details: error instanceof Error ? error.stack : String(error),
+        };
+
+        return c.json(
+          {
+            success: false as const,
+            requestId,
+            error: {
+              code,
+              message,
+              retryable,
+            },
+          },
+          status as 500,
+        );
+      } finally {
+        if (initialContext.httpRequest) {
+          initialContext.httpRequest.status = status;
+          initialContext.httpRequest.latency = `${String((performance.now() - startTime) / 1000)}s`;
+        }
+
+        log({
+          severity,
+          message: 'Analyzer Request',
+        });
+      }
+    });
   },
 );
 

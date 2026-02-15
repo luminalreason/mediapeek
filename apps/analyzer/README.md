@@ -1,6 +1,6 @@
 # Analyzer Worker
 
-This folder is the target home for the analysis API Worker (`/resource/analyze` and `/resources/proxy`).
+This folder is the target home for the analysis API Worker (`/resource/analyze`).
 
 Current status:
 

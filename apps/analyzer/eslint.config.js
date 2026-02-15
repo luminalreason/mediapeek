@@ -1,3 +1,8 @@
 import { config } from '@mediapeek/config-eslint';
 
-export default config;
+export default [
+  ...config,
+  {
+    ignores: ['dist/**', '.wrangler/**', '.turbo/**'],
+  },
+];

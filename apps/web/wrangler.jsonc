@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "mediapeek-web",
+  "name": "mediapeek",
   "compatibility_date": "2024-11-12",
   "compatibility_flags": ["nodejs_compat"],
   "main": "workers/app.ts",
@@ -15,8 +15,21 @@
     },
   ],
   "vars": {
-    "ENABLE_TURNSTILE": "false",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAACLSwN-VBqB6mZ1u",
+    "ENABLE_TURNSTILE": "true",
+    "ANALYZE_RATE_LIMIT_PER_MINUTE": "30",
   },
+  // Add a real Rate Limiting binding per environment when available:
+  // "ratelimits": [
+  //   {
+  //     "name": "ANALYZE_RATE_LIMITER",
+  //     "namespace_id": "<your-rate-limit-namespace-id>",
+  //     "simple": {
+  //       "limit": 30,
+  //       "period": 60
+  //     }
+  //   }
+  // ],
   "observability": {
     "enabled": true,
   },

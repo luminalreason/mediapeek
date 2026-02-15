@@ -18,8 +18,15 @@ export interface FetchDiagnostics {
   resolvedFilename: string;
   responseStatus: number;
   probeMethod: string;
+  firstByteReadTimeoutMs?: number;
+  firstByteReadRetries?: number;
+  firstByteReadStrategy?: 'range' | 'no_range_fallback';
   streamCloseError?: string;
 }
+
+const FIRST_BYTE_READ_TIMEOUT_MS = 15_000;
+const MAX_FIRST_BYTE_READ_RETRIES = 1;
+const NO_RANGE_FALLBACK_TIMEOUT_MS = 25_000;
 
 export interface MediaFetchResult {
   buffer: Uint8Array;
@@ -41,6 +48,36 @@ export async function fetchMediaChunk(
   diagnostics.isGoogleDrive = isGoogleDrive;
 
   validateUrl(targetUrl);
+
+  const assertByteFetchStatus = (res: Response) => {
+    if (res.status === 200 || res.status === 206) return;
+    if (res.status === 404) {
+      throw new Error('Media file not found. Check the URL.');
+    }
+    if (res.status === 403) {
+      throw new Error(
+        'Access denied while fetching media bytes. The link may have expired or blocked server-side fetches.',
+      );
+    }
+    throw new Error(`Unable to retrieve media bytes (HTTP ${String(res.status)}).`);
+  };
+
+  const readFirstChunkWithTimeout = async (
+    sourceReader: ReadableStreamDefaultReader<Uint8Array>,
+    timeoutMs: number,
+  ) => {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        reject(new Error('Fetch stream read timed out'));
+      }, timeoutMs),
+    );
+
+    const { done, value } = await Promise.race([
+      sourceReader.read(),
+      timeoutPromise,
+    ]);
+    return done ? null : value;
+  };
 
   // 1. Initial Request (HEAD with fallback to GET)
   const tHead = performance.now();
@@ -143,52 +180,105 @@ export async function fetchMediaChunk(
       : chunkSize - 1;
 
   const tFetch = performance.now();
-  const response = await fetch(targetUrl, {
-    headers: getEmulationHeaders(`bytes=0-${String(fetchEnd)}`),
-    redirect: 'follow',
-  });
-  diagnostics.fetchRequestDurationMs = Math.round(performance.now() - tFetch);
-  diagnostics.responseStatus = response.status;
-
-  const SAFE_LIMIT = 10 * 1024 * 1024; // 10MB "Eco Mode" limit
-  const tempBuffer = new Uint8Array(SAFE_LIMIT); // Pre-allocate: Zero GC overhead
-  let offset = 0;
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('Failed to retrieve response body stream');
-
-  // Check for Zip Header to transparently decompress Deflate streams
-  // OPTIMIZATION: Only check for zip header if the filename looks like an archive (or if we have no filename).
-  // This prevents checking every video file for zip magic if we already know it's .mp4.
-  // We allow null filename to proceed to check (safety net).
+  let response: Response | null = null;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let firstChunk: Uint8Array | null = null;
-  {
-    // Add a race timeout to the first read to prevent hangs
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => {
-        reject(new Error('Fetch stream read timed out'));
-      }, 5000),
-    );
+  let firstByteTimeoutRetries = 0;
+  let firstByteReadStrategy: FetchDiagnostics['firstByteReadStrategy'] = 'range';
+  let rangeReadTimedOut = false;
+
+  for (let attempt = 0; attempt <= MAX_FIRST_BYTE_READ_RETRIES; attempt += 1) {
+    const attemptResponse = await fetch(targetUrl, {
+      headers: getEmulationHeaders(`bytes=0-${String(fetchEnd)}`),
+      redirect: 'follow',
+    });
+    assertByteFetchStatus(attemptResponse);
+    diagnostics.responseStatus = attemptResponse.status;
+
+    const attemptReader = attemptResponse.body?.getReader();
+    if (!attemptReader) throw new Error('Failed to retrieve response body stream');
 
     try {
-      const { done, value } = await Promise.race([
-        reader.read(),
-        timeoutPromise,
-      ]);
-      if (!done) {
-        firstChunk = value;
-      }
+      response = attemptResponse;
+      reader = attemptReader;
+      firstChunk = await readFirstChunkWithTimeout(
+        attemptReader,
+        FIRST_BYTE_READ_TIMEOUT_MS,
+      );
+      rangeReadTimedOut = false;
+      break;
     } catch (err) {
-      if (
-        err instanceof Error &&
-        err.message === 'Fetch stream read timed out'
-      ) {
-        void reader.cancel();
+      const isReadTimeout =
+        err instanceof Error && err.message === 'Fetch stream read timed out';
+      if (isReadTimeout) {
+        void attemptReader.cancel();
+        firstByteTimeoutRetries += 1;
+        rangeReadTimedOut = true;
+        response = null;
+        reader = null;
+        firstChunk = null;
+        continue;
       }
       throw err;
     }
   }
 
+  // Some origins stall on Range reads from datacenter egress.
+  // Fallback once to a plain GET (no Range) before failing.
+  if (!response || !reader) {
+    const fallbackResponse = await fetch(targetUrl, {
+      headers: getEmulationHeaders(),
+      redirect: 'follow',
+    });
+    assertByteFetchStatus(fallbackResponse);
+    diagnostics.responseStatus = fallbackResponse.status;
+
+    const fallbackReader = fallbackResponse.body?.getReader();
+    if (!fallbackReader) {
+      throw new Error('Failed to retrieve response body stream');
+    }
+
+    try {
+      response = fallbackResponse;
+      reader = fallbackReader;
+      firstChunk = await readFirstChunkWithTimeout(
+        fallbackReader,
+        NO_RANGE_FALLBACK_TIMEOUT_MS,
+      );
+      firstByteReadStrategy = 'no_range_fallback';
+    } catch (err) {
+      const isReadTimeout =
+        err instanceof Error && err.message === 'Fetch stream read timed out';
+      if (isReadTimeout) {
+        void fallbackReader.cancel();
+        throw new Error(
+          rangeReadTimedOut
+            ? `Fetch stream read timed out after ${String(firstByteTimeoutRetries)} range attempt(s) and no-range fallback`
+            : 'Fetch stream read timed out during no-range fallback',
+          { cause: err },
+        );
+      }
+      throw err;
+    }
+  }
+
+  diagnostics.fetchRequestDurationMs = Math.round(performance.now() - tFetch);
+  diagnostics.firstByteReadTimeoutMs = FIRST_BYTE_READ_TIMEOUT_MS;
+  diagnostics.firstByteReadRetries = firstByteTimeoutRetries;
+  diagnostics.firstByteReadStrategy = firstByteReadStrategy;
+
+  if (!response || !reader) {
+    throw new Error('Failed to retrieve response body stream');
+  }
+
+  const SAFE_LIMIT = 10 * 1024 * 1024; // 10MB "Eco Mode" limit
+  const tempBuffer = new Uint8Array(SAFE_LIMIT); // Pre-allocate: Zero GC overhead
+  let offset = 0;
+
+  // Check for Zip Header to transparently decompress Deflate streams
+  // OPTIMIZATION: Only check for zip header if the filename looks like an archive (or if we have no filename).
+  // This prevents checking every video file for zip magic if we already know it's .mp4.
+  // We allow null filename to proceed to check (safety net).
   let finalReader = reader;
   let isZipCompressed = false;
 

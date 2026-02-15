@@ -6,16 +6,72 @@ import type { AppType } from 'mediapeek-analyzer';
 import { log, type LogContext, requestStorage } from '~/lib/logger.server';
 import { TurnstileResponseSchema } from '~/lib/schemas/turnstile';
 import { mediaPeekEmitter } from '~/services/event-bus.server';
+import type { MediaInfoDiagnostics } from '~/services/mediainfo.server';
 import { initTelemetry } from '~/services/telemetry.server';
 
 import type { Route } from './+types/route';
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_PER_MINUTE = 30;
+const DEFAULT_ANALYZER_REQUEST_TIMEOUT_MS = 60_000;
+const TURNSTILE_TEST_SECRET_KEY = '1x0000000000000000000000000000000AA';
 const rateLimitState = new Map<string, { count: number; resetAt: number }>();
+interface RateLimitBinding {
+  limit: (options: { key: string }) => Promise<{ success: boolean }>;
+}
+
+interface AnalyzerDiagnostics {
+  fetch: {
+    resolvedFilename?: string;
+    [key: string]: unknown;
+  };
+  analysis: MediaInfoDiagnostics;
+}
+
+interface AnalyzerRpcSuccess {
+  success: true;
+  requestId?: string;
+  fileSize?: number;
+  results: Record<string, string>;
+  diagnostics: AnalyzerDiagnostics;
+}
+
+interface AnalyzerRpcFailure {
+  success: false;
+  error: unknown;
+}
+
+type AnalyzerRpcResponse = AnalyzerRpcSuccess | AnalyzerRpcFailure;
 
 const getRequestId = (request: Request) =>
   request.headers.get('cf-ray') ?? crypto.randomUUID();
+
+const getClientIp = (request: Request) =>
+  request.headers.get('CF-Connecting-IP') ??
+  request.headers.get('x-real-ip') ??
+  'anonymous';
+
+const isLocalRequest = (request: Request) => {
+  const hostname = new URL(request.url).hostname;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
+};
+
+const resolveTurnstileSecretKey = (
+  request: Request,
+  configuredSecret?: string,
+) => {
+  if (import.meta.env.DEV || isLocalRequest(request)) {
+    return TURNSTILE_TEST_SECRET_KEY;
+  }
+  const trimmed = configuredSecret?.trim();
+  if (trimmed) return trimmed;
+  return '';
+};
 
 const getApiKeyFromRequest = (request: Request): string | null => {
   const xApiKey = request.headers.get('x-api-key');
@@ -66,10 +122,7 @@ const isCpuLimitError = (error: unknown) => {
 
 const applyRateLimit = (request: Request, maxPerMinute: number) => {
   const now = Date.now();
-  const key =
-    request.headers.get('CF-Connecting-IP') ??
-    request.headers.get('x-real-ip') ??
-    'anonymous';
+  const key = getClientIp(request);
   const current = rateLimitState.get(key);
 
   if (!current || now >= current.resetAt) {
@@ -110,6 +163,33 @@ const getRateLimitConfig = (env: Env) => {
   return configured;
 };
 
+const getAnalyzerTimeoutMs = (env: Env) => {
+  const configured = Number.parseInt(env.ANALYZER_REQUEST_TIMEOUT_MS ?? '', 10);
+  if (Number.isNaN(configured) || configured <= 0) {
+    return DEFAULT_ANALYZER_REQUEST_TIMEOUT_MS;
+  }
+  return Math.min(180_000, configured);
+};
+
+const buildTooManyRequestsResponse = (requestId: string, retryAfterSec = 60) =>
+  Response.json(
+    {
+      success: false,
+      requestId,
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many analysis requests. Please retry shortly.',
+        retryable: true,
+      },
+    },
+    {
+      status: 429,
+      headers: {
+        'Retry-After': String(Math.max(1, Math.ceil(retryAfterSec))),
+      },
+    },
+  );
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   initTelemetry();
 
@@ -137,7 +217,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       initialContext.customContext ?? (initialContext.customContext = {});
 
     try {
-      const expectedApiKey = context.cloudflare.env.ANALYZE_API_KEY?.trim();
+      const expectedApiKey =
+        context.cloudflare.env.ANALYZE_PUBLIC_API_KEY?.trim();
       if (expectedApiKey) {
         const providedApiKey = getApiKeyFromRequest(request);
         if (!providedApiKey) {
@@ -166,6 +247,27 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         }
       }
 
+      const rateLimiter = (
+        context.cloudflare.env as Env & {
+          ANALYZE_RATE_LIMITER?: RateLimitBinding;
+        }
+      ).ANALYZE_RATE_LIMITER;
+      if (rateLimiter) {
+        try {
+          const outcome = await rateLimiter.limit({ key: getClientIp(request) });
+          if (!outcome.success) {
+            status = 429;
+            severity = 'WARNING';
+            customContext.errorClass = 'ANALYZE_RATE_LIMITED';
+            customContext.rateLimitSource = 'cloudflare_binding';
+            return buildTooManyRequestsResponse(requestId, 60);
+          }
+        } catch (error) {
+          customContext.rateLimitBindingError =
+            error instanceof Error ? error.message : String(error);
+        }
+      }
+
       const rateLimitResult = applyRateLimit(
         request,
         getRateLimitConfig(context.cloudflare.env),
@@ -174,24 +276,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         status = 429;
         severity = 'WARNING';
         customContext.errorClass = 'ANALYZE_RATE_LIMITED';
-        return Response.json(
-          {
-            success: false,
-            requestId,
-            error: {
-              code: 'RATE_LIMITED',
-              message: 'Too many analysis requests. Please retry shortly.',
-              retryable: true,
-            },
-          },
-          {
-            status: 429,
-            headers: {
-              'Retry-After': String(
-                Math.max(1, Math.ceil(rateLimitResult.retryAfterMs / 1000)),
-              ),
-            },
-          },
+        customContext.rateLimitSource = 'in_memory';
+        return buildTooManyRequestsResponse(
+          requestId,
+          rateLimitResult.retryAfterMs / 1000,
         );
       }
 
@@ -229,14 +317,27 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       }
 
       const turnstileToken = request.headers.get('CF-Turnstile-Response');
-      const secretKey = import.meta.env.DEV
-        ? '1x00000000000000000000AA'
-        : context.cloudflare.env.TURNSTILE_SECRET_KEY;
+      const enableTurnstile =
+        (context.cloudflare.env.ENABLE_TURNSTILE as string) === 'true';
+      const secretKey = resolveTurnstileSecretKey(
+        request,
+        context.cloudflare.env.TURNSTILE_SECRET_KEY,
+      );
 
-      if (
-        (context.cloudflare.env.ENABLE_TURNSTILE as string) === 'true' &&
-        secretKey
-      ) {
+      if (enableTurnstile) {
+        if (!secretKey) {
+          status = 500;
+          severity = 'ERROR';
+          customContext.errorClass = 'TURNSTILE_MISCONFIGURED';
+          return buildErrorResponse(
+            requestId,
+            500,
+            'INTERNAL_ERROR',
+            'Security verification is currently unavailable. Please try again later.',
+            true,
+          );
+        }
+
         if (!turnstileToken) {
           status = 403;
           severity = 'WARNING';
@@ -255,56 +356,59 @@ export async function loader({ request, context }: Route.LoaderArgs) {
           );
         }
 
-        if (turnstileToken === 'localhost-mock-token' || import.meta.env.DEV) {
-          mediaPeekEmitter.emit('turnstile:verify', {
-            success: true,
-            token: turnstileToken,
-            outcome: { result: 'BYPASS_DEV' },
-          });
-        } else {
-          const formData = new FormData();
-          formData.append('secret', secretKey);
-          formData.append('response', turnstileToken);
-          formData.append(
-            'remoteip',
-            request.headers.get('CF-Connecting-IP') ?? '',
+        const formData = new FormData();
+        formData.append('secret', secretKey);
+        formData.append('response', turnstileToken);
+        formData.append('remoteip', request.headers.get('CF-Connecting-IP') ?? '');
+        formData.append('idempotency_key', requestId);
+
+        const result = await fetch(
+          'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+          {
+            method: 'POST',
+            body: formData,
+          },
+        );
+
+        if (!result.ok) {
+          status = 503;
+          severity = 'ERROR';
+          customContext.errorClass = 'TURNSTILE_VERIFY_UNAVAILABLE';
+          return buildErrorResponse(
+            requestId,
+            503,
+            'INTERNAL_ERROR',
+            'Unable to validate the security check right now. Please try again.',
+            true,
           );
+        }
 
-          const result = await fetch(
-            'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-            {
-              method: 'POST',
-              body: formData,
-            },
-          );
+        const json = await result.json();
+        const outcome = TurnstileResponseSchema.parse(json);
 
-          const json = await result.json();
-          const outcome = TurnstileResponseSchema.parse(json);
-
-          if (!outcome.success) {
-            status = 403;
-            severity = 'WARNING';
-            customContext.errorClass = 'ANALYZE_AUTH_FAILED';
-            mediaPeekEmitter.emit('turnstile:verify', {
-              success: false,
-              token: turnstileToken,
-              outcome,
-            });
-            return buildErrorResponse(
-              requestId,
-              403,
-              'AUTH_INVALID',
-              'Security check failed. Please refresh and try again.',
-              false,
-            );
-          }
-
+        if (!outcome.success) {
+          status = 403;
+          severity = 'WARNING';
+          customContext.errorClass = 'ANALYZE_AUTH_FAILED';
           mediaPeekEmitter.emit('turnstile:verify', {
-            success: true,
+            success: false,
             token: turnstileToken,
             outcome,
           });
+          return buildErrorResponse(
+            requestId,
+            403,
+            'AUTH_INVALID',
+            'Security check failed. Please refresh and try again.',
+            false,
+          );
         }
+
+        mediaPeekEmitter.emit('turnstile:verify', {
+          success: true,
+          token: turnstileToken,
+          outcome,
+        });
       }
 
       const initialUrl = validationResult.data.url;
@@ -315,21 +419,96 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         url: initialUrl,
       });
 
+      const analyzerBinding = context.cloudflare.env.ANALYZER;
+      if (!analyzerBinding || typeof analyzerBinding.fetch !== 'function') {
+        status = 503;
+        severity = 'ERROR';
+        customContext.errorClass = 'ANALYZER_BINDING_MISSING';
+        return buildErrorResponse(
+          requestId,
+          503,
+          'INTERNAL_ERROR',
+          'Analyzer service binding is unavailable. Please try again shortly.',
+          true,
+        );
+      }
+
       // --- RPC Call to Analyzer Worker ---
       const client = hc<AppType>('https://analyzer', {
-        fetch: context.cloudflare.env.ANALYZER.fetch.bind(
-          context.cloudflare.env.ANALYZER,
-        ),
+        fetch: analyzerBinding.fetch.bind(analyzerBinding),
       });
+      const analyzerApiKey = context.cloudflare.env.ANALYZE_API_KEY?.trim();
+      const analyzerTimeoutMs = getAnalyzerTimeoutMs(context.cloudflare.env);
+      customContext.analyzerTimeoutMs = analyzerTimeoutMs;
 
-      const rpcResponse = await client.analyze.$post({
-        json: {
-          url: initialUrl,
-          format: requestedFormats,
+      const analyzerRequestOptions: {
+        headers?: Record<string, string>;
+        signal: AbortSignal;
+      } = {
+        signal: AbortSignal.timeout(analyzerTimeoutMs),
+      };
+      if (analyzerApiKey) {
+        analyzerRequestOptions.headers = {
+          'x-api-key': analyzerApiKey,
+        };
+      }
+
+      const rpcResponse = await client.analyze.$post(
+        {
+          json: {
+            url: initialUrl,
+            format: requestedFormats,
+          },
         },
-      });
+        analyzerRequestOptions,
+      );
 
-      const rpcData = await rpcResponse.json();
+      const rpcContentType =
+        rpcResponse.headers.get('content-type')?.toLowerCase() ?? '';
+      customContext.analyzerStatus = rpcResponse.status;
+      customContext.analyzerContentType = rpcContentType;
+
+      if (!rpcContentType.includes('application/json')) {
+        status = 502;
+        severity = 'ERROR';
+        customContext.errorClass = 'ANALYZER_INVALID_RESPONSE';
+        const preview = (await rpcResponse.text()).slice(0, 240);
+        customContext.analyzerResponsePreview = preview;
+        const isMissingLocalDevSession = /couldn't find a local dev session/i.test(
+          preview,
+        );
+        return buildErrorResponse(
+          requestId,
+          502,
+          'INTERNAL_ERROR',
+          isMissingLocalDevSession
+            ? 'Analyzer local dev worker is unavailable. Restart `pnpm dev` and retry.'
+            : 'Analyzer service returned an unexpected response. Please retry.',
+          true,
+        );
+      }
+
+      const rpcResponseClone = rpcResponse.clone();
+      let rpcData: AnalyzerRpcResponse;
+      try {
+        rpcData = (await rpcResponse.json()) as AnalyzerRpcResponse;
+      } catch (error) {
+        status = 502;
+        severity = 'ERROR';
+        customContext.errorClass = 'ANALYZER_INVALID_JSON';
+        customContext.analyzerJsonError =
+          error instanceof Error ? error.message : String(error);
+        customContext.analyzerResponsePreview = (
+          await rpcResponseClone.text()
+        ).slice(0, 240);
+        return buildErrorResponse(
+          requestId,
+          502,
+          'INTERNAL_ERROR',
+          'Analyzer service returned malformed data. Please retry.',
+          true,
+        );
+      }
 
       if (!rpcData.success) {
         // Handle RPC Error
@@ -359,6 +538,19 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         customContext.errorClass = `ANALYZE_${code}`;
 
         throw new Error(message); // Re-throw to be caught by catch block below for unified error handling
+      }
+
+      if (!rpcData.results || !rpcData.diagnostics) {
+        status = 502;
+        severity = 'ERROR';
+        customContext.errorClass = 'ANALYZER_RESPONSE_INCOMPLETE';
+        return buildErrorResponse(
+          requestId,
+          502,
+          'INTERNAL_ERROR',
+          'Analyzer response was incomplete. Please retry.',
+          true,
+        );
       }
 
       const { results, diagnostics } = rpcData;
@@ -415,6 +607,17 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         errorMessage =
           'CPU budget exceeded while analyzing this source. Please retry with a smaller or simpler media file.';
         customContext.errorClass = 'CPU_LIMIT_EXCEEDED';
+      } else if (
+        error instanceof Error &&
+        (error.name === 'AbortError' ||
+          /timed out|timeout|aborted/i.test(error.message))
+      ) {
+        status = 504;
+        code = 'UPSTREAM_FETCH_FAILED';
+        retryable = true;
+        errorMessage =
+          'Analysis request timed out upstream. Please retry with a smaller or simpler source URL.';
+        customContext.errorClass = 'ANALYZER_TIMEOUT';
       } else if (
         errorMessage.includes('internal error; reference =') ||
         (error instanceof Error &&

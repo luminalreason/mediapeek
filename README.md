@@ -57,9 +57,12 @@ SSRF protection blocks requests to local and private network resources.
 
 Optional analyzer controls:
 
-- `ANALYZE_API_KEY` (secret)
+- `ANALYZE_API_KEY` (secret for web -> analyzer internal auth)
+- `ANALYZE_PUBLIC_API_KEY` (optional secret for public `/resource/analyze` access control)
 - `ANALYZE_RATE_LIMIT_PER_MINUTE` (default `30`)
-- `ANALYZE_API_BASE_URL` (optional frontend -> analyzer forwarding target)
+- `ENABLE_TURNSTILE` (`"true"`/`"false"`)
+- `TURNSTILE_SITE_KEY` (public site key)
+- `TURNSTILE_SECRET_KEY` (secret key)
 
 ## Try It
 

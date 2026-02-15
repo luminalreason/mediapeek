@@ -2,7 +2,7 @@ import { Skeleton } from '@mediapeek/ui/components/skeleton';
 
 export function MediaSkeleton() {
   return (
-    <div className="mx-auto mt-8 w-full max-w-5xl space-y-6 px-0 pb-20 sm:px-12">
+    <div className="mt-8 w-full space-y-6 pb-20">
       {/* Header Skeleton */}
       <div className="flex flex-col gap-4">
         <Skeleton className="h-8 w-3/4 max-w-md bg-zinc-200 dark:bg-zinc-800" />{' '}

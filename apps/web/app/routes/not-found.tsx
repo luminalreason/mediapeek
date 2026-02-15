@@ -8,7 +8,7 @@ import type { Route } from './+types/not-found';
 export const loader = () => data(null, { status: 404 });
 
 export const meta: Route.MetaFunction = () => {
-  return [{ title: '404 - Not Found' }];
+  return [{ title: '404 - MediaPeek' }];
 };
 
 export default function NotFoundRoute() {

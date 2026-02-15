@@ -23,6 +23,18 @@ import type { Route } from './+types/root';
 import { RouteAnnouncer } from './components/route-announcer';
 import { createThemeSessionResolverWithSecret } from './sessions.server';
 
+const TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA';
+
+const isLocalRequest = (request: Request) => {
+  const hostname = new URL(request.url).hostname;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
+};
+
 declare global {
   interface Window {
     ENV: {
@@ -61,10 +73,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     console.error('THEME_CONTEXT_MISSING', error);
   }
 
+  const turnstileSiteKey =
+    import.meta.env.DEV || isLocalRequest(request)
+      ? TURNSTILE_TEST_SITE_KEY
+      : context.cloudflare.env.TURNSTILE_SITE_KEY;
+
   return {
     theme,
     env: {
-      TURNSTILE_SITE_KEY: context.cloudflare.env.TURNSTILE_SITE_KEY,
+      TURNSTILE_SITE_KEY: turnstileSiteKey,
       ENABLE_TURNSTILE: context.cloudflare.env.ENABLE_TURNSTILE,
     },
   };

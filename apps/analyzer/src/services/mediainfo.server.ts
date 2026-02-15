@@ -14,7 +14,12 @@ export class CpuBudgetExceededError extends Error {
   }
 }
 
-const checkCpuBudget = (start: number, limitMs = 300000) => {
+export const DEFAULT_ANALYSIS_CPU_BUDGET_MS = 25_000;
+
+const checkCpuBudget = (
+  start: number,
+  limitMs = DEFAULT_ANALYSIS_CPU_BUDGET_MS,
+) => {
   if (performance.now() - start > limitMs) {
     throw new CpuBudgetExceededError();
   }
@@ -74,6 +79,7 @@ export async function analyzeMediaBuffer(
   fileSize: number | undefined,
   filename: string,
   requestedFormats: string[] = [],
+  cpuBudgetMs: number = DEFAULT_ANALYSIS_CPU_BUDGET_MS,
 ): Promise<MediaInfoAnalysis> {
   const tStart = performance.now();
 
@@ -161,7 +167,7 @@ export async function analyzeMediaBuffer(
           const resultData = await infoInstance.analyzeData(
             () => effectiveFileSize,
             (size: number, offset: number) => {
-              checkCpuBudget(tStart);
+              checkCpuBudget(tStart, cpuBudgetMs);
               return readChunk(size, offset);
             },
           );

@@ -26,7 +26,7 @@ export const TurnstileWidget = forwardRef<
   const [widgetId, setWidgetId] = useState<string | null>(null);
   const widgetIdRef = useRef<string | null>(null);
 
-  const [isVerified, setIsVerified] = useState(() => import.meta.env.DEV);
+  const [isVerified, setIsVerified] = useState(false);
 
   // Store callbacks in ref to avoid effect dependencies
   const callbacksRef = useRef({ onVerify, onError, onExpire });
@@ -45,13 +45,6 @@ export const TurnstileWidget = forwardRef<
   }));
 
   useEffect(() => {
-    // Localhost / Development Bypass
-    if (import.meta.env.DEV) {
-      callbacksRef.current.onVerify('localhost-mock-token');
-      // Already set to true in initial state
-      return;
-    }
-
     if (!containerRef.current) return;
 
     // Wait for turnstile to be available
@@ -65,6 +58,9 @@ export const TurnstileWidget = forwardRef<
         if (!widgetIdRef.current) {
           try {
             const siteKey = getTurnstileSiteKey();
+            if (!siteKey) {
+              throw new Error('TURNSTILE_SITE_KEY is missing.');
+            }
             const id = turnstile.render(containerRef.current, {
               sitekey: siteKey,
               callback: (token) => {
@@ -98,14 +94,6 @@ export const TurnstileWidget = forwardRef<
       }
     };
   }, []);
-
-  if (import.meta.env.DEV) {
-    return isVerified ? null : (
-      <div className="text-muted-foreground flex min-h-[65px] min-w-[300px] items-center justify-center rounded-md border border-dashed p-4 text-sm">
-        Turnstile Bypassed (Dev Mode)
-      </div>
-    );
-  }
 
   // Hide when verified to clean up UI, but keep mounted if needed (logic specific to use case)
   if (isVerified) {

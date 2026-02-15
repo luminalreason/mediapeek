@@ -7,7 +7,7 @@ import type { Route } from './+types/route';
 
 export const meta: Route.MetaFunction = () => {
   return [
-    { title: 'MediaPeek App' },
+    { title: 'App - MediaPeek' },
     {
       name: 'description',
       content:
@@ -22,7 +22,7 @@ export default function AppRoute() {
   return (
     <div className="flex min-h-screen flex-col font-sans">
       <Header sticky={false} />
-      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col items-center justify-start px-4 pb-8 lg:px-8">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-12 sm:px-12">
         {isHydrated ? (
           <MediaForm />
         ) : (

@@ -18,7 +18,7 @@ import type { Route } from './+types/route';
 
 export const meta: Route.MetaFunction = () => {
   return [
-    { title: 'MediaPeek' },
+    { title: 'Home - MediaPeek' },
     {
       name: 'description',
       content:

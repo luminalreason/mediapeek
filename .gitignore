@@ -19,19 +19,35 @@ dist/
 *.tsbuildinfo
 
 # React Router
-/.react-router/
+.react-router/
 
 # Cloudflare
 .mf
 .wrangler
+.wrangler/
 .dev.vars
 .dev.vars.*
+.dev.var
+.dev.var.*
 worker-configuration.d.ts
 
 # Environment Variables
 .env
 .env.*
 !.env.example
+.envrc
+.envrc.local
+.secrets
+.secrets.*
+
+# Key Material / Local Credentials
+*.key
+*.pem
+*.p12
+*.pfx
+*.pkcs12
+*.jks
+*.keystore
 
 # Editor
 .idea/
@@ -54,4 +70,3 @@ coverage/
 # Temporary
 temp/
 tmp/
-

@@ -25,15 +25,16 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260210.0",
-    "@eslint/js": "^9.17.0",
+    "@cloudflare/workers-types": "^4.20260214.0",
+    "@eslint/js": "^10.0.1",
     "@mediapeek/config-eslint": "workspace:*",
     "@mediapeek/config-typescript": "workspace:*",
-    "eslint": "^9.17.0",
+    "@types/node": "^25.2.3",
+    "eslint": "^10.0.0",
     "globals": "^17.3.0",
     "mediainfo.js": "^0.3.7",
     "vite": "^7.3.1",
-    "vitest": "^3.2.4",
-    "wrangler": "^4.64.0"
+    "vitest": "^4.0.18",
+    "wrangler": "^4.65.0"
   }
 }
